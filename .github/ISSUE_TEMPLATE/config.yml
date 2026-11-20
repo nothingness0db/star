@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用与发布文档
+    url: https://github.com/nothingness0db/6657star/blob/main/docs/publishing.md
+    about: 安装、加载、签名与发布相关的问题先看这里

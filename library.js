@@ -31,12 +31,34 @@
   const sitePermStatus = document.getElementById("sitePermStatus");
   const sitePermBtn = document.getElementById("sitePermBtn");
   const sitePermRemoveBtn = document.getElementById("sitePermRemoveBtn");
+  const siteFilter = document.getElementById("siteFilter");
+  const tagFilter = document.getElementById("tagFilter");
+  const sortSelect = document.getElementById("sortSelect");
+  const clearFilterBtn = document.getElementById("clearFilterBtn");
+  const welcomeEl = document.getElementById("welcome");
+  const welcomeClose = document.getElementById("welcomeClose");
+  const themeSelect = document.getElementById("themeSelect");
+  const fbToast = document.getElementById("fbToast");
+  const fbBadge = document.getElementById("fbBadge");
+  const autoUpdate = document.getElementById("autoUpdate");
+  const memeCacheSize = document.getElementById("memeCacheSize");
+  const dataStats = document.getElementById("dataStats");
+  const exportBackupBtn = document.getElementById("exportBackupBtn");
+  const settingsImportBtn = document.getElementById("settingsImportBtn");
+  const settingsClearBtn = document.getElementById("settingsClearBtn");
+  const settingsWelcome = document.getElementById("settingsWelcome");
 
   const SITE_ORIGIN = "https://sb6657.cn/*";
 
   let entries = [];
   let query = "";
   let onlyMemes = false;
+  let siteFilterValue = "";
+  let tagFilterValue = "";
+  let sortValue = "new";
+  let settings = null;
+  const FILTER_KEY = "filters";
+  const VIEW_KEY = "welcomeViewed";
   let toastTimer = null;
   const expanded = new Set();
 
@@ -56,22 +78,13 @@
     return "";
   }
 
-  function domainOf(raw) {
-    const valid = safeUrl(raw);
-    if (!valid) return "";
-    try {
-      return new URL(valid).hostname.replace(/^www\./, "");
-    } catch (error) {
-      return "";
-    }
-  }
-
   function hasMeme(entry) {
     return Boolean(entry && entry.meme && entry.meme.id !== undefined && entry.meme.id !== null && entry.meme.id !== "");
   }
 
   function searchHaystack(entry) {
-    let haystack = entry.text + "\n" + entry.title + "\n" + entry.url;
+    let haystack = entry.text + "\n" + entry.title + "\n" + entry.url +
+      "\n" + (entry.tags || []).join(" ") + "\n" + (entry.note || "");
     if (hasMeme(entry)) {
       haystack += "\n梗 #" + entry.meme.id + "\n" + entry.meme.id +
         "\n" + (entry.meme.text || "") + "\n" + (entry.meme.tags || "");
@@ -81,6 +94,7 @@
 
   function showToast(message, action) {
     clearTimeout(toastTimer);
+    if (settings && settings.feedback && settings.feedback.toast === false && !action) return;
     toastEl.textContent = "";
 
     const text = document.createElement("span");
@@ -169,6 +183,12 @@
     const expandBtn = fragment.querySelector(".expand-btn");
     const copyBtn = fragment.querySelector(".copy-btn");
     const deleteBtn = fragment.querySelector(".delete-btn");
+    const pinBtn = fragment.querySelector(".pin-btn");
+    const noteToggle = fragment.querySelector(".note-toggle");
+    const noteEditor = fragment.querySelector(".note-editor");
+    const noteInput = fragment.querySelector(".note-input");
+    const tagList = fragment.querySelector(".tag-list");
+    const tagInput = fragment.querySelector(".tag-input");
 
     const url = safeUrl(entry.url);
     const domain = domainOf(entry.url);
@@ -186,6 +206,12 @@
       plainTitle.textContent = titleText;
       titleEl.replaceWith(plainTitle);
       sourceEl.remove();
+    }
+
+    if (entry.pinned) {
+      card.classList.add("pinned");
+      pinBtn.setAttribute("aria-pressed", "true");
+      pinBtn.title = "取消置顶";
     }
 
     timeEl.textContent = store.formatDateTime(entry.createdAt);
@@ -225,6 +251,13 @@
       else expanded.delete(entry.id);
     });
 
+    renderNote(entry, noteToggle, noteEditor, noteInput);
+    renderTags(entry, tagList, tagInput);
+
+    pinBtn.addEventListener("click", async function () {
+      await updateEntry(entry, { pinned: !entry.pinned });
+    });
+
     copyBtn.addEventListener("click", async function () {
       const ok = await copyText(entry.text);
       if (!ok) {
@@ -257,6 +290,90 @@
     return card;
   }
 
+  async function updateEntry(entry, patch, options) {
+    try {
+      const updated = await store.update(entry.id, patch);
+      if (!updated) throw new Error("条目不存在");
+      Object.assign(entry, updated);
+      if (options && options.inPlace) {
+        updateFilterOptions();
+      } else {
+        await reload();
+      }
+    } catch (error) {
+      console.error("[句子库] 更新失败", error);
+      showToast("更新失败，请重试");
+    }
+  }
+
+  function renderNote(entry, toggle, editor, input) {
+    const display = document.createElement("p");
+    display.className = "note-display";
+    if (entry.note) {
+      display.textContent = entry.note;
+      toggle.parentNode.insertBefore(display, toggle.nextSibling);
+    }
+    function setOpen(open) {
+      editor.hidden = !open;
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.textContent = open ? "收起备注" : (entry.note ? "编辑备注" : "＋ 添加备注");
+      if (open) input.focus();
+    }
+    toggle.textContent = entry.note ? "编辑备注" : "＋ 添加备注";
+    toggle.addEventListener("click", function () {
+      setOpen(editor.hidden);
+    });
+    input.value = entry.note || "";
+    let timer = null;
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      timer = setTimeout(async function () {
+        await updateEntry(entry, { note: input.value }, { inPlace: true });
+        display.textContent = input.value;
+        if (!input.value && display.parentNode) display.remove();
+        else if (input.value && !display.parentNode) toggle.parentNode.insertBefore(display, toggle.nextSibling);
+        if (input.value && !display.parentNode) {
+          toggle.parentNode.insertBefore(display, toggle.nextSibling);
+        } else if (!input.value && display.parentNode) {
+          display.remove();
+        }
+        toggle.textContent = input.value ? "编辑备注" : "＋ 添加备注";
+      }, 450);
+    });
+  }
+
+  function renderTags(entry, tagList, tagInput) {
+    function draw() {
+      tagList.replaceChildren();
+      (entry.tags || []).forEach(function (tag) {
+        const chip = document.createElement("span");
+        chip.className = "tag-chip";
+        const label = document.createElement("span");
+        label.textContent = tag;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", "删除标签 " + tag);
+        remove.addEventListener("click", async function () {
+          await updateEntry(entry, { tags: entry.tags.filter(function (item) { return item !== tag; }) }, { inPlace: true });
+        });
+        chip.append(label, remove);
+        tagList.append(chip);
+      });
+    }
+    draw();
+    tagInput.addEventListener("keydown", async function (event) {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const tag = tagInput.value.trim();
+      if (!tag) return;
+      tagInput.value = "";
+      const tags = (entry.tags || []).slice();
+      if (!tags.includes(tag)) tags.push(tag);
+      await updateEntry(entry, { tags: tags }, { inPlace: true });
+    });
+  }
+
   async function deleteEntry(entry) {
     try {
       await store.remove(entry.id);
@@ -286,34 +403,102 @@
     });
   }
 
+  function domainOf(raw) {
+    try {
+      return new URL(raw).hostname.replace(/^www\./, "");
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function updateFilterOptions() {
+    const sites = new Set(entries.map(function (entry) { return domainOf(entry.url); }).filter(Boolean));
+    const tags = new Set();
+    entries.forEach(function (entry) { (entry.tags || []).forEach(function (tag) { tags.add(tag); }); });
+    const siteCurrent = siteFilter.value;
+    const tagCurrent = tagFilter.value;
+    if (!sites.has(siteCurrent)) {
+      siteFilterValue = "";
+      siteFilter.value = "";
+    }
+    if (!tags.has(tagCurrent)) {
+      tagFilterValue = "";
+      tagFilter.value = "";
+    }
+  }
+
+  function renderFilterOptions() {
+    const sites = new Set();
+    const tags = new Set();
+    entries.forEach(function (entry) {
+      const domain = domainOf(entry.url);
+      if (domain) sites.add(domain);
+      (entry.tags || []).forEach(function (tag) { tags.add(tag); });
+    });
+    function syncOptions(select, values, placeholder, currentValue) {
+      const current = currentValue || "";
+      const existing = new Set(Array.from(select.options).map(function (option) { return option.value; }));
+      values.forEach(function (value) {
+        if (existing.has(value)) return;
+        select.append(new Option(value, value));
+      });
+      Array.from(select.options).forEach(function (option) {
+        if (option.value && !values.has(option.value)) option.remove();
+      });
+      // 条目尚未加载时（entries 为空）保留已保存的筛选值，等 reload 后再应用。
+      const next = values.has(current) ? current : (entries.length > 0 ? "" : current);
+      select.value = values.has(next) ? next : "";
+      if (select.options.length === 0) select.append(new Option(placeholder, ""));
+      return next;
+    }
+    siteFilterValue = syncOptions(siteFilter, sites, "全部站点", siteFilterValue);
+    tagFilterValue = syncOptions(tagFilter, tags, "全部标签", tagFilterValue);
+  }
+
+  function compareEntries(a, b) {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    if (sortValue === "old") return a.createdAt - b.createdAt;
+    if (sortValue === "site") {
+      const domainCompare = domainOf(a.url).localeCompare(domainOf(b.url));
+      if (domainCompare !== 0) return domainCompare;
+      return b.createdAt - a.createdAt;
+    }
+    if (sortValue === "title") {
+      const titleCompare = (a.title || a.text).localeCompare(b.title || b.text);
+      if (titleCompare !== 0) return titleCompare;
+      return b.createdAt - a.createdAt;
+    }
+    return b.createdAt - a.createdAt;
+  }
+
   function render() {
     const needle = query.trim().toLowerCase();
-    let filtered = onlyMemes ? entries.filter(hasMeme) : entries;
+    let filtered = onlyMemes ? entries.filter(hasMeme) : entries.slice();
+    if (siteFilterValue) filtered = filtered.filter(function (entry) { return domainOf(entry.url) === siteFilterValue; });
+    if (tagFilterValue) filtered = filtered.filter(function (entry) { return (entry.tags || []).includes(tagFilterValue); });
     if (needle) {
       filtered = filtered.filter(function (entry) {
         return searchHaystack(entry).includes(needle);
       });
     }
+    filtered.sort(compareEntries);
 
+    renderFilterOptions();
     listEl.replaceChildren();
     filtered.forEach(buildCard);
 
     totalCountEl.textContent = "共 " + entries.length + " 条";
-    let countText = "";
-    if (needle) countText = filtered.length + " 条结果";
-    if (onlyMemes) countText = (countText ? countText + " · " : "") + "只看梗";
-    resultCountEl.textContent = countText;
+    const parts = [];
+    if (needle || siteFilterValue || tagFilterValue || onlyMemes) parts.push(filtered.length + " 条结果");
+    if (onlyMemes) parts.push("只看梗");
+    if (siteFilterValue) parts.push(siteFilterValue);
+    if (tagFilterValue) parts.push("#" + tagFilterValue);
+    resultCountEl.textContent = parts.join(" · ");
 
     emptyStateEl.hidden = entries.length !== 0;
     noResultsEl.hidden = !(entries.length > 0 && filtered.length === 0);
     if (!noResultsEl.hidden) {
-      if (onlyMemes && !needle) {
-        noResultsTextEl.textContent = "还没有匹配到梗的收藏。保存与梗库一致的句子后会自动标记。";
-      } else if (onlyMemes) {
-        noResultsTextEl.textContent = "没有包含「" + query.trim() + "」的梗收藏，换个关键词试试。";
-      } else {
-        noResultsTextEl.textContent = "没有包含「" + query.trim() + "」的句子，换个关键词试试。";
-      }
+      noResultsTextEl.textContent = "没有符合当前筛选条件的句子，换个条件试试。";
     }
 
     onlyMemesBtn.classList.toggle("active", onlyMemes);
@@ -323,6 +508,27 @@
     exportJsonBtn.disabled = empty;
     exportMdBtn.disabled = empty;
     clearBtn.disabled = empty;
+  }
+
+  async function saveFilters() {
+    try {
+      await browser.storage.local.set({ [FILTER_KEY]: { site: siteFilterValue, tag: tagFilterValue, sort: sortValue } });
+    } catch (error) {
+      /* 筛选状态保存失败不影响使用 */
+    }
+  }
+
+  async function loadFilters() {
+    try {
+      const data = await browser.storage.local.get(FILTER_KEY);
+      const saved = data && data[FILTER_KEY];
+      if (!saved) return;
+      siteFilterValue = saved.site || "";
+      tagFilterValue = saved.tag || "";
+      sortValue = ["new", "old", "site", "title"].includes(saved.sort) ? saved.sort : "new";
+    } catch (error) {
+      /* 忽略 */
+    }
   }
 
   async function reload() {
@@ -396,6 +602,7 @@
 
   async function initMemes() {
     await refreshMemeInfo();
+    if (!settings.autoUpdateMemes) return;
     if (!memeState.count || memeState.stale || memeState.refreshing) {
       startMemeRefresh();
     }
@@ -406,6 +613,29 @@
     render();
   });
 
+  siteFilter.addEventListener("change", function () {
+    siteFilterValue = siteFilter.value;
+    saveFilters();
+    render();
+  });
+  tagFilter.addEventListener("change", function () {
+    tagFilterValue = tagFilter.value;
+    saveFilters();
+    render();
+  });
+  sortSelect.addEventListener("change", function () {
+    sortValue = sortSelect.value;
+    saveFilters();
+    render();
+  });
+  clearFilterBtn.addEventListener("click", function () {
+    siteFilterValue = "";
+    tagFilterValue = "";
+    onlyMemes = false;
+    saveFilters();
+    render();
+  });
+
   refreshMemesBtn.addEventListener("click", function () {
     startMemeRefresh();
   });
@@ -413,6 +643,10 @@
   if (browser.runtime && browser.runtime.onMessage) {
     browser.runtime.onMessage.addListener(function (message) {
       if (!message || typeof message !== "object") return;
+      if (message.type === "show-toast") {
+        showToast(message.text);
+        return;
+      }
       if (message.type === "meme-refresh-progress") {
         if (message.phase === "fetching" || message.phase === "retry") {
           memeError = "";
@@ -456,9 +690,79 @@
     sitePermRemoveBtn.hidden = !granted;
   }
 
+  function applyTheme() {
+    if (!settings) return;
+    document.documentElement.dataset.theme = settings.theme === "system" ? "" : settings.theme;
+    if (!settings.theme || settings.theme === "system") delete document.documentElement.dataset.theme;
+    themeSelect.value = settings.theme;
+  }
+
+  async function refreshSettingsUI() {
+    settings = await store.getSettings();
+    applyTheme();
+    fbToast.checked = settings.feedback.toast !== false;
+    fbBadge.checked = settings.feedback.badge !== false;
+    autoUpdate.checked = settings.autoUpdateMemes !== false;
+    const info = await browser.runtime.sendMessage({ type: "getMemeInfo" }).catch(function () { return null; });
+    let bytes = 0;
+    try {
+      const raw = await browser.storage.local.get("memes");
+      bytes = raw && raw.memes ? new TextEncoder().encode(JSON.stringify(raw.memes)).length : 0;
+    } catch (error) { /* 忽略 */ }
+    memeCacheSize.textContent = "缓存大小：约 " + (bytes / 1024).toFixed(0) + " KB（梗 " + (info ? info.count : 0) + " 条）";
+    const stats = await store.stats();
+    dataStats.textContent = "条目 " + stats.entries + " 条 · 梗命中 " + stats.memes + " 条 · 站点 " + stats.sites +
+      " 个 · 占用约 " + (stats.bytes / 1024).toFixed(1) + " KB";
+  }
+
+  function showWelcome() {
+    welcomeEl.hidden = false;
+    welcomeClose.focus();
+  }
+
+  async function dismissWelcome() {
+    welcomeEl.hidden = true;
+    try {
+      settings = await store.saveSettings({ welcomeSeen: true });
+    } catch (error) {
+      /* 忽略 */
+    }
+  }
+
   settingsBtn.addEventListener("click", function () {
     refreshPermissionUI();
+    refreshSettingsUI().catch(function (error) { console.error("[句子库] 设置读取失败", error); });
     settingsDialog.showModal();
+  });
+
+  welcomeClose.addEventListener("click", dismissWelcome);
+  settingsWelcome.addEventListener("click", function () {
+    settingsDialog.close();
+    showWelcome();
+  });
+
+  themeSelect.addEventListener("change", async function () {
+    settings = await store.saveSettings({ theme: themeSelect.value });
+    applyTheme();
+  });
+  fbToast.addEventListener("change", async function () {
+    settings = await store.saveSettings({ feedback: { toast: fbToast.checked } });
+  });
+  fbBadge.addEventListener("change", async function () {
+    settings = await store.saveSettings({ feedback: { badge: fbBadge.checked } });
+  });
+  autoUpdate.addEventListener("change", async function () {
+    settings = await store.saveSettings({ autoUpdateMemes: autoUpdate.checked });
+  });
+  exportBackupBtn.addEventListener("click", function () {
+    exportJsonBtn.click();
+  });
+  settingsImportBtn.addEventListener("click", function () {
+    importInput.click();
+  });
+  settingsClearBtn.addEventListener("click", function () {
+    settingsDialog.close();
+    clearBtn.click();
   });
 
   settingsClose.addEventListener("click", function () {
@@ -596,6 +900,23 @@
     const outside = event.clientX < rect.left || event.clientX > rect.right ||
       event.clientY < rect.top || event.clientY > rect.bottom;
     if (outside) confirmDialog.close();
+  });
+
+  // 初始化：设置、筛选持久化、主题、首次安装欢迎区块。
+  (async function init() {
+    settings = await store.getSettings();
+    await loadFilters();
+    sortSelect.value = sortValue;
+    siteFilter.value = siteFilterValue;
+    tagFilter.value = tagFilterValue;
+    applyTheme();
+    // 欢迎区块：仅在首次安装的 install 事件里打开，关闭后记住。
+    const viewed = await browser.storage.local.get(VIEW_KEY).catch(function () { return {}; });
+    const shouldWelcome = Boolean(viewed && viewed[VIEW_KEY]) && !settings.welcomeSeen;
+    welcomeEl.hidden = !shouldWelcome;
+    render();
+  })().catch(function (error) {
+    console.error("[句子库] 初始化失败", error);
   });
 
   if (browser.storage && browser.storage.onChanged) {

@@ -1,0 +1,52 @@
+name: Bug 反馈
+description: 报告扩展的异常行为
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢反馈！请尽量填完整，方便复现和定位。
+  - type: input
+    id: firefox-version
+    attributes:
+      label: Firefox 版本
+      description: 例如 140.0 / Nightly 141。可在 about:firefox 查看。
+      placeholder: "140.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      placeholder: "Windows 11 / macOS 15 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: dropdown
+    id: install-mode
+    attributes:
+      label: 是否临时加载
+      description: 从 about:debugging 临时载入，还是通过 xpi 永久安装？
+      options:
+        - 临时加载（about:debugging）
+        - 永久安装（xpi）
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 一步一步写清楚做了什么、期望什么、实际发生什么。
+      placeholder: |
+        1. 打开 …
+        2. 选中文字右键「收藏这句」
+        3. 期望 …，实际 …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 浏览器控制台错误（可选）
+      description: 在 about:debugging 点扩展的「检查」，看 Console 是否有报错。
+      render: shell

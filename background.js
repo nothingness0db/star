@@ -4,6 +4,8 @@ const MENU_ID = "save-sentence";
 const BADGE_MS = 1800;
 const ACCENT = "#ff6b35";
 const DANGER = "#d64545";
+const SETTINGS_KEY = "settings";
+const DEFAULT_SETTINGS = { theme: "system", feedback: { toast: true, badge: true }, autoUpdateMemes: true, welcomeSeen: false };
 
 let badgeTimer = null;
 
@@ -21,14 +23,56 @@ function createMenus() {
     });
 }
 
-browser.runtime.onInstalled.addListener(function () {
+browser.runtime.onInstalled.addListener(function (details) {
   createMenus();
+  if (details && details.reason === "install") {
+    browser.storage.local.set({ welcomeViewed: true }).catch(function () {});
+  }
   scheduleStaleRefresh();
 });
 browser.runtime.onStartup.addListener(function () {
   createMenus();
   scheduleStaleRefresh();
 });
+
+async function getSettings() {
+  const data = await browser.storage.local.get(SETTINGS_KEY);
+  const saved = (data && data[SETTINGS_KEY]) || {};
+  return {
+    theme: saved.theme || DEFAULT_SETTINGS.theme,
+    feedback: Object.assign({}, DEFAULT_SETTINGS.feedback, saved.feedback || {}),
+    autoUpdateMemes: saved.autoUpdateMemes !== false,
+    welcomeSeen: Boolean(saved.welcomeSeen)
+  };
+}
+
+async function saveFeedback(text, tone) {
+  const settings = await getSettings();
+  if (settings.feedback.badge) flashBadge(text, tone);
+  if (settings.feedback.toast) broadcast({ type: "show-toast", text: text, tone: tone });
+}
+
+async function pageHint(tabId, text) {
+  try {
+    await browser.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function (message) {
+        var old = document.getElementById("__sentence_hint__");
+        if (old) old.remove();
+        var box = document.createElement("div");
+        box.id = "__sentence_hint__";
+        box.textContent = message;
+        box.style.cssText = "position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483647;max-width:min(90vw,360px);padding:10px 16px;border-radius:999px;background:#262220;color:#fff;font:14px/1.5 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none";
+        (document.body || document.documentElement).appendChild(box);
+        setTimeout(function () { if (box.parentNode) box.parentNode.removeChild(box); }, 2200);
+      },
+      args: [text]
+    });
+  } catch (error) {
+    // 页面不允许注入时退回角标。
+    flashBadge("!", DANGER);
+  }
+}
 
 function flashBadge(text, color) {
   if (badgeTimer) {
@@ -108,12 +152,15 @@ function refreshMemes() {
 }
 
 function scheduleStaleRefresh() {
-  MemeLib.getCache().then(function (cache) {
-    if (cache && cache.items && cache.items.length && MemeLib.isStale(cache)) {
-      setTimeout(function () {
-        refreshMemes().catch(function () {});
-      }, 4000);
-    }
+  getSettings().then(function (settings) {
+    if (!settings.autoUpdateMemes) return;
+    MemeLib.getCache().then(function (cache) {
+      if (cache && cache.items && cache.items.length && MemeLib.isStale(cache)) {
+        setTimeout(function () {
+          refreshMemes().catch(function () {});
+        }, 4000);
+      }
+    }).catch(function () {});
   }).catch(function () {});
 }
 
@@ -145,11 +192,14 @@ async function saveEntry(input) {
     meme: meme || undefined
   });
 
-  // 还没有梗库时，顺手在后台拉一份，拉完会自动补齐这条收藏。
-  MemeLib.getCache().then(function (cache) {
-    if (!cache || !cache.items || cache.items.length === 0 || MemeLib.isStale(cache)) {
-      refreshMemes().catch(function () {});
-    }
+  // 还没有梗库时，且用户未关闭自动更新，才在后台拉一份。
+  getSettings().then(function (settings) {
+    if (!settings.autoUpdateMemes) return;
+    MemeLib.getCache().then(function (cache) {
+      if (!cache || !cache.items || cache.items.length === 0 || MemeLib.isStale(cache)) {
+        refreshMemes().catch(function () {});
+      }
+    }).catch(function () {});
   }).catch(function () {});
 
   return {
@@ -166,7 +216,7 @@ browser.menus.onClicked.addListener(async function (info, tab) {
 
   const text = (info.selectionText || "").trim();
   if (!text) {
-    flashBadge("!", DANGER);
+    saveFeedback("没有选中文字", DANGER);
     return;
   }
 
@@ -175,10 +225,10 @@ browser.menus.onClicked.addListener(async function (info, tab) {
 
   try {
     const result = await saveEntry({ text: text, title: pageTitle, url: pageUrl, source: "contextmenu" });
-    flashBadge(result.ok ? "✓" : "!", result.ok ? ACCENT : DANGER);
+    saveFeedback(result.ok ? "已收藏" : "保存失败", result.ok ? ACCENT : DANGER);
   } catch (error) {
     console.error("[句子库] 保存失败", error);
-    flashBadge("!", DANGER);
+    saveFeedback("保存失败", DANGER);
   }
 });
 
@@ -220,6 +270,40 @@ browser.runtime.onMessage.addListener(function (message, sender) {
     }).catch(function (error) {
       return { ok: false, error: memeErrorMessage(error) };
     });
+  }
+});
+
+browser.commands.onCommand.addListener(async function (command) {
+  if (command !== "save-selection") return;
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  if (!tab || !tab.id) return;
+  let selected = "";
+  try {
+    const results = await browser.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: function () { return window.getSelection().toString(); }
+    });
+    selected = String(results && results[0] && results[0].result || "").trim();
+  } catch (error) {
+    flashBadge("!", DANGER);
+    return;
+  }
+  if (!selected) {
+    await pageHint(tab.id, "先选中文字");
+    return;
+  }
+  try {
+    const result = await saveEntry({
+      text: selected,
+      title: tab.title || "",
+      url: tab.url || "",
+      source: "shortcut"
+    });
+    await saveFeedback(result.ok ? "已收藏" : "保存失败", result.ok ? ACCENT : DANGER);
+  } catch (error) {
+    console.error("[句子库] 快捷键保存失败", error);
+    saveFeedback("保存失败", DANGER);
   }
 });
 

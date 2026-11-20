@@ -1,6 +1,9 @@
 node_modules/
 web-ext-artifacts/
+web-ext-lint.json
 *.zip
 *.xpi
+.vscode/
+.eta/
 .DS_Store
 Thumbs.db

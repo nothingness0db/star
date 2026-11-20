@@ -8,12 +8,26 @@
   const STAR_CLASS = "ss-6657-star";
   const STYLE_ID = "ss-6657-style";
   const TOAST_ID = "ss-6657-toast";
-  const PUSH_CLASS = "ss-6657-star--push";
-  const TIGHT_CLASS = "ss-6657-star--tight";
-  const CORNER_CLASS = "ss-6657-star--corner";
   const SCAN_DEBOUNCE = 180;
+  const ICON_SIZE = 18;
+  const HIT_SIZE = 32;
 
-  const records = new WeakMap();
+  const TEXT_SELECTOR = ".barrage-text, .meme-text, .pk-text, .rank-barrage, .rank-text";
+  const CONTROL_SELECTOR = [
+    ".meme-side",
+    ".meme-meta",
+    ".copy-btn",
+    ".pk-votes",
+    ".rank-votes",
+    ".rank-daily",
+    ".rank-count",
+    ".stale-score",
+    ".vote-btns"
+  ].join(", ");
+  const INTERACTIVE_SELECTOR = "button, .el-button, .copy-btn, .vote-btn, .vote-btns, .rank-count";
+
+  const hostRecords = new WeakMap();
+  const liveRecords = new Set();
   let savedPrints = new Set();
   let scanTimer = null;
   let toastTimer = null;
@@ -28,22 +42,19 @@
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = [
-      "." + STAR_CLASS + "{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:15px;height:15px;min-width:15px;margin:0 2px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;opacity:.35;cursor:pointer;line-height:1;vertical-align:middle;transition:opacity .15s ease,color .15s ease,transform .15s ease;pointer-events:auto}",
+      "." + STAR_CLASS + "{position:absolute;z-index:3;display:flex;align-items:center;justify-content:flex-end;width:" + HIT_SIZE + "px;height:" + HIT_SIZE + "px;min-width:0;margin:0;padding:0;border:0;border-radius:50%;background:transparent;color:inherit;opacity:.65;cursor:pointer;line-height:1;pointer-events:auto;transition:opacity .15s ease,color .15s ease,transform .15s ease}",
+      "." + STAR_CLASS + "::before{content:\"\";position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;background:rgba(128,128,128,.22);transition:background .15s ease}",
       "." + STAR_CLASS + ":hover,." + STAR_CLASS + ":focus-visible{opacity:1;color:#e6a23c;outline:none}",
-      "." + STAR_CLASS + ":active{transform:scale(.88)}",
-      "." + STAR_CLASS + "[data-saving=\"1\"]{opacity:.6;cursor:progress}",
+      "." + STAR_CLASS + ":hover::before,." + STAR_CLASS + ":focus-visible::before{background:rgba(230,162,60,.2)}",
+      "." + STAR_CLASS + ":active{transform:scale(.9)}",
+      "." + STAR_CLASS + ":focus-visible{box-shadow:0 0 0 2px rgba(230,162,60,.75)}",
+      "." + STAR_CLASS + "[data-saving=\"1\"]{opacity:.7;cursor:progress}",
       "." + STAR_CLASS + "[data-saved=\"1\"]{opacity:1;color:#e6a23c}",
-      "." + STAR_CLASS + " svg{display:block;width:11px;height:11px;pointer-events:none}",
+      "." + STAR_CLASS + "[data-saved=\"1\"]::before{background:rgba(230,162,60,.16)}",
+      "." + STAR_CLASS + " svg{position:relative;display:block;width:" + ICON_SIZE + "px;height:" + ICON_SIZE + "px;pointer-events:none}",
+      "." + STAR_CLASS + " svg path{fill:none;stroke:currentColor}",
       "." + STAR_CLASS + "[data-saved=\"1\"] svg{fill:currentColor;stroke:currentColor}",
-      "." + PUSH_CLASS + "{margin-left:auto}",
-      // 表格行里给文本留 2px 的净增量，按钮本体悬挂在单元格右侧内边距中，
-      // 这样既贴着文本，又不会把长梗挤出新的一行（不改变行高）。
-      "." + TIGHT_CLASS + "{margin-left:0;margin-right:-17px}",
-      // 生命周期列表的右侧元信息栏没有多余行高，用绝对定位的小星标，
-      // 只占元信息栏左上角，避免把整行撑高。
-      "." + CORNER_CLASS + "{position:absolute;left:0;top:0;width:11px;height:11px;min-width:11px;margin:0}",
-      "." + CORNER_CLASS + " svg{width:9px;height:9px}",
-      "." + CORNER_CLASS + "::after{content:\"\";position:absolute;left:-4px;right:-6px;top:-4px;bottom:-4px}",
+      "." + STAR_CLASS + "[data-saved=\"1\"] svg path{fill:currentColor;stroke:currentColor}",
       "#" + TOAST_ID + "{position:fixed;left:50%;bottom:24px;z-index:2147483647;transform:translate(-50%,12px);opacity:0;pointer-events:none;background:rgba(32,30,27,.94);color:#f8f4ee;font:13px/1.4 -apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans SC\",\"PingFang SC\",\"Microsoft YaHei\",sans-serif;padding:9px 16px;border-radius:999px;box-shadow:0 12px 30px -10px rgba(0,0,0,.45);transition:opacity .18s ease,transform .18s ease;max-width:calc(100vw - 32px)}",
       "#" + TOAST_ID + "[data-show=\"1\"]{opacity:1;transform:translate(-50%,0)}"
     ].join("\n");
@@ -73,7 +84,6 @@
     button.className = STAR_CLASS;
     button.dataset.text = text;
     button.dataset.saved = "0";
-    button.dataset.saving = "";
     button.title = "收藏这句";
     button.setAttribute("aria-label", "收藏这句");
     button.setAttribute("aria-pressed", "false");
@@ -150,21 +160,13 @@
   }
 
   function textOf(element) {
-    if (element.matches(".barrage-text, .meme-text")) {
-      return (element.textContent || "").trim();
-    }
-    const clone = element.cloneNode(true);
-    clone.querySelectorAll("." + STAR_CLASS + ", .meme-meta, .tag-list, .submit-time, button, svg").forEach(function (node) {
-      node.remove();
-    });
-    return (clone.textContent || "").trim();
+    return (element.textContent || "").replace(/\u200b/g, "").trim();
   }
 
-  function isUsable(element) {
+  function isUsableText(element) {
     if (!element || !element.isConnected) return false;
     if (element.closest("." + STAR_CLASS)) return false;
-    const text = textOf(element);
-    if (!text) return false;
+    if (!textOf(element)) return false;
     if (element.getClientRects().length === 0 && element.offsetParent === null) return false;
     return true;
   }
@@ -184,67 +186,330 @@
     return "";
   }
 
-  function collectTargets() {
-    const targets = [];
-    document.querySelectorAll(".barrage-text, .meme-text").forEach(function (element) {
-      if (!isUsable(element)) return;
-      targets.push(element);
-    });
-    document.querySelectorAll(".meme-item").forEach(function (element) {
-      if (element.querySelector(".barrage-text, .meme-text")) return;
-      if (!isUsable(element)) return;
-      targets.push(element);
-    });
-    return targets;
-  }
-
-  function placeInMeta(meta, button) {
-    const position = getComputedStyle(meta).position;
-    if (position === "static") meta.style.position = "relative";
-    button.classList.add(CORNER_CLASS);
-    meta.append(button);
-  }
-
-  function insertStar(element, text) {
-    const previous = records.get(element);
-    if (previous && previous.text === text && previous.button.isConnected) {
-      updateStar(previous.button, text);
-      return;
+  function resolveHost(element) {
+    const td = element.closest("td");
+    if (td) {
+      const row = element.closest("tr");
+      return { host: td, scope: row || td };
     }
-    if (previous && previous.button && previous.button.isConnected) {
-      previous.button.remove();
+    const fighter = element.closest(".pk-fighter");
+    if (fighter) return { host: fighter, scope: fighter };
+    const line = element.closest(".line-bottom");
+    if (line) return { host: line, scope: line };
+    const item = element.closest(".meme-item");
+    if (item) return { host: item, scope: item };
+    const rank = element.closest(".rank-item");
+    if (rank) return { host: rank, scope: rank };
+    const li = element.closest("li");
+    if (li) return { host: li, scope: li };
+    const parent = element.parentElement;
+    return parent ? { host: parent, scope: parent } : null;
+  }
+
+  function lineRectsOf(element) {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rects = Array.prototype.slice.call(range.getClientRects());
+    const usable = rects.filter(function (rect) {
+      return rect.width > 1 && rect.height > 1;
+    });
+    if (usable.length) return usable;
+    const own = element.getBoundingClientRect();
+    return own.width > 1 && own.height > 1 ? [own] : [];
+  }
+
+  function isVisibleRect(rect) {
+    return rect && rect.width > 1 && rect.height > 1;
+  }
+
+  function textNodeRects(element) {
+    const rects = [];
+    const doc = element.ownerDocument;
+    const walker = doc.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        return node.nodeValue && node.nodeValue.trim()
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT;
+      }
+    });
+    let node;
+    while ((node = walker.nextNode())) {
+      const range = doc.createRange();
+      range.selectNodeContents(node);
+      Array.prototype.slice.call(range.getClientRects()).forEach(function (rect) {
+        if (isVisibleRect(rect)) rects.push(rect);
+      });
+    }
+    return rects;
+  }
+
+  function controlRects(element, forColumn) {
+    if (element.matches(INTERACTIVE_SELECTOR)) {
+      const own = element.getBoundingClientRect();
+      return isVisibleRect(own) ? [own] : [];
+    }
+    const rects = [];
+    const interactive = Array.prototype.slice.call(element.querySelectorAll(INTERACTIVE_SELECTOR)).filter(function (child) {
+      const rect = child.getBoundingClientRect();
+      return isVisibleRect(rect);
+    });
+    if (interactive.length) {
+      interactive.forEach(function (child) {
+        rects.push(child.getBoundingClientRect());
+      });
+      if (forColumn) return rects;
+    } else if (forColumn) {
+      const nodes = textNodeRects(element);
+      if (nodes.length) return nodes;
+      const own = element.getBoundingClientRect();
+      return isVisibleRect(own) ? [own] : [];
+    }
+    textNodeRects(element).forEach(function (rect) {
+      rects.push(rect);
+    });
+    element.querySelectorAll("*").forEach(function (child) {
+      if (child.closest("." + STAR_CLASS)) return;
+      const rect = child.getBoundingClientRect();
+      if (isVisibleRect(rect)) rects.push(rect);
+    });
+    return rects;
+  }
+
+  function findRightControl(scope, firstLine, hostRect) {
+    if (!scope || !scope.querySelectorAll) return null;
+    let best = null;
+    scope.querySelectorAll(CONTROL_SELECTOR).forEach(function (control) {
+      if (control.closest("." + STAR_CLASS)) return;
+      const rects = controlRects(control, true);
+      let left = Infinity;
+      for (const rect of rects) {
+        if (rect.left <= firstLine.left + 2) continue;
+        if (rect.left < hostRect.left) continue;
+        if (rect.bottom <= firstLine.top - 40) continue;
+        if (rect.top >= firstLine.bottom + 60) continue;
+        if (rect.left < left) left = rect.left;
+      }
+      if (left === Infinity) return;
+      if (!best || left < best.left) best = { element: control, left: left };
+    });
+    return best;
+  }
+
+  function intersects(iconRect, rect) {
+    return iconRect.right > rect.left + 0.5 &&
+      iconRect.left < rect.right - 0.5 &&
+      iconRect.bottom > rect.top + 0.5 &&
+      iconRect.top < rect.bottom - 0.5;
+  }
+
+  function positionStar(record, targetCenterX) {
+    const host = record.host;
+    const button = record.button;
+    const hostRect = host.getBoundingClientRect();
+    if (hostRect.width < 8 || hostRect.height < 8) {
+      button.hidden = true;
+      return true;
+    }
+    const style = getComputedStyle(host);
+    if (style.position === "static") host.style.position = "relative";
+
+    const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+    const borderTop = parseFloat(style.borderTopWidth) || 0;
+    const borderRight = parseFloat(style.borderRightWidth) || 0;
+    const borderBottom = parseFloat(style.borderBottomWidth) || 0;
+
+    const rects = lineRectsOf(record.textEl);
+    if (!rects.length) {
+      button.hidden = true;
+      return true;
+    }
+    const first = rects[0];
+    const control = findRightControl(record.scope, first, hostRect);
+    const sameRow = control ? host.contains(control.element) : false;
+    const textRect = record.textEl.getBoundingClientRect();
+
+    let iconLeft;
+    if (targetCenterX !== null && targetCenterX !== undefined) {
+      iconLeft = targetCenterX - ICON_SIZE / 2;
+    } else if (control && !sameRow) {
+      // 右侧控件在另一列（表格、排行）：星标固定在控件左侧 8px，整列对齐。
+      iconLeft = control.left - 8 - ICON_SIZE;
+    } else {
+      // 文本与右侧控件同处一行（梗卡片）：贴着文本块右边缘，避开文字。
+      iconLeft = textRect.right;
+    }
+
+    const minLeft = hostRect.left + borderLeft + 2;
+    const maxLeft = hostRect.right - borderRight - 2 - ICON_SIZE;
+    if (maxLeft >= minLeft) iconLeft = Math.min(Math.max(iconLeft, minLeft), maxLeft);
+    else iconLeft = minLeft;
+
+    const padLeft = hostRect.left + borderLeft;
+    const padTop = hostRect.top + borderTop;
+    const padWidth = hostRect.width - borderLeft - borderRight;
+    const padHeight = hostRect.height - borderTop - borderBottom;
+    const hitOverhang = HIT_SIZE - ICON_SIZE;
+    if (iconLeft - hitOverhang < padLeft) iconLeft = padLeft + hitOverhang;
+
+    let centerY = first.top + first.height / 2;
+    let iconRect = {
+      left: iconLeft,
+      right: iconLeft + ICON_SIZE,
+      top: centerY - ICON_SIZE / 2,
+      bottom: centerY + ICON_SIZE / 2
+    };
+
+    // 收集与星标同高度的障碍：文字行、同一行里的右侧控件。
+    const obstacles = rects.slice();
+    if (sameRow) {
+      record.scope.querySelectorAll(CONTROL_SELECTOR).forEach(function (other) {
+        if (other.closest("." + STAR_CLASS)) return;
+        controlRects(other, false).forEach(function (rect) {
+          obstacles.push(rect);
+        });
+      });
+    }
+
+    const collisions = obstacles.filter(function (rect) {
+      return intersects(iconRect, rect);
+    });
+    if (collisions.length) {
+      const topLimit = Math.min.apply(null, collisions.map(function (rect) {
+        return rect.top;
+      })) - 6;
+      const aboveCenter = topLimit - ICON_SIZE / 2;
+      const minCenter = hostRect.top + borderTop + 2 + ICON_SIZE / 2;
+      if (aboveCenter >= minCenter) {
+        centerY = aboveCenter;
+        iconRect = {
+          left: iconLeft,
+          right: iconLeft + ICON_SIZE,
+          top: centerY - ICON_SIZE / 2,
+          bottom: centerY + ICON_SIZE / 2
+        };
+      }
+    }
+
+    const textCollision = rects.some(function (rect) {
+      return intersects(iconRect, rect);
+    });
+
+    let boxLeft = iconLeft - hitOverhang;
+    let boxTop = centerY - HIT_SIZE / 2;
+    boxLeft = Math.min(Math.max(boxLeft, padLeft), padLeft + Math.max(0, padWidth - HIT_SIZE));
+    boxTop = Math.min(Math.max(boxTop, padTop), padTop + Math.max(0, padHeight - HIT_SIZE));
+
+    button.hidden = false;
+    button.style.left = (boxLeft - padLeft) + "px";
+    button.style.top = (boxTop - padTop) + "px";
+
+    // 图标靠按钮右侧摆放；按钮被容器夹回来时，图标也跟着右移。
+    const actualLeft = boxLeft + (HIT_SIZE - ICON_SIZE);
+    record.centerX = actualLeft + ICON_SIZE / 2;
+    if (targetCenterX === null || targetCenterX === undefined) {
+      record.baseCenterX = record.centerX;
+      record.baseCollides = textCollision;
+    }
+    return textCollision;
+  }
+
+  function columnGroupKey(record) {
+    const host = record.host;
+    if (host.classList.contains("pk-fighter")) {
+      return host.classList.contains("pk-a") ? "pk-a" : "pk-b";
+    }
+    if (host.classList.contains("line-bottom")) return host;
+    return host.closest("ul, tbody") || host.parentElement || host;
+  }
+
+  function normalizeColumns() {
+    const groups = new Map();
+    liveRecords.forEach(function (record) {
+      if (!record.button.isConnected || record.button.hidden) return;
+      if (typeof record.baseCenterX !== "number") return;
+      const key = columnGroupKey(record);
+      let list = groups.get(key);
+      if (!list) {
+        list = [];
+        groups.set(key, list);
+      }
+      list.push(record);
+    });
+
+    groups.forEach(function (list) {
+      if (list.length < 2) return;
+      const counts = new Map();
+      list.forEach(function (record) {
+        const center = Math.round(record.baseCenterX);
+        counts.set(center, (counts.get(center) || 0) + 1);
+      });
+      let target = null;
+      let best = -1;
+      counts.forEach(function (count, center) {
+        if (count > best || (count === best && (target === null || center < target))) {
+          best = count;
+          target = center;
+        }
+      });
+      if (target === null) return;
+      list.forEach(function (record) {
+        if (Math.abs(record.centerX - target) < 1) return;
+        const collides = positionStar(record, target);
+        if (collides && !record.baseCollides) positionStar(record, null);
+      });
+    });
+  }
+
+  function removeRecord(record) {
+    record.button.remove();
+    hostRecords.delete(record.host);
+    liveRecords.delete(record);
+  }
+
+  function processTextElement(element) {
+    if (!isUsableText(element)) return;
+    const resolved = resolveHost(element);
+    if (!resolved || !resolved.host) return;
+    const text = textOf(element);
+    if (!text) return;
+
+    const host = resolved.host;
+    let record = hostRecords.get(host);
+    if (record) {
+      if (record.textEl === element) {
+        if (record.text !== text) {
+          record.text = text;
+          record.button.dataset.text = text;
+          updateStar(record.button, text);
+        }
+        const id = pageMemeId(element);
+        if (id) record.button.dataset.memeId = id;
+        else delete record.button.dataset.memeId;
+        positionStar(record);
+        return;
+      }
+      // 同一个条目只保留一个星标；文本元素被 Vue 换掉时才重建。
+      if (record.textEl.isConnected && textOf(record.textEl)) return;
+      removeRecord(record);
+      record = null;
     }
 
     const button = createStar(text);
     const id = pageMemeId(element);
     if (id) button.dataset.memeId = id;
+    host.append(button);
 
-    if (element.matches(".meme-item")) {
-      const meta = element.querySelector(".meme-meta");
-      if (meta) {
-        placeInMeta(meta, button);
-      } else {
-        button.classList.add(PUSH_CLASS);
-        element.append(button);
-      }
-    } else {
-      const parent = element.parentNode;
-      if (!parent) return;
-      const meta = element.parentElement && element.parentElement.classList.contains("meme-item")
-        ? element.parentElement.querySelector(".meme-meta")
-        : null;
-      if (meta) {
-        placeInMeta(meta, button);
-      } else if (element.parentElement && element.parentElement.classList.contains("meme-content")) {
-        button.classList.add(TIGHT_CLASS);
-        parent.insertBefore(button, element.nextSibling);
-      } else {
-        parent.insertBefore(button, element.nextSibling);
-      }
-    }
-
-    records.set(element, { text: text, button: button });
+    record = {
+      host: host,
+      scope: resolved.scope,
+      textEl: element,
+      text: text,
+      button: button
+    };
+    hostRecords.set(host, record);
+    liveRecords.add(record);
     updateStar(button, text);
+    positionStar(record);
   }
 
   function scan() {
@@ -252,12 +517,14 @@
     if (!document.body) return;
     injectStyle();
     try {
-      collectTargets().forEach(function (element) {
-        insertStar(element, textOf(element));
-      });
+      document.querySelectorAll(TEXT_SELECTOR).forEach(processTextElement);
     } catch (error) {
       console.error("[句子库] 注入站内按钮失败", error);
     }
+    liveRecords.forEach(function (record) {
+      if (!record.host.isConnected || !record.textEl.isConnected) removeRecord(record);
+    });
+    normalizeColumns();
     refreshAllStars();
   }
 
@@ -271,11 +538,18 @@
     return node.classList.contains(STAR_CLASS) || node.id === TOAST_ID;
   }
 
+  function isLiveStreamNode(node) {
+    const element = node && (node.nodeType === 1 ? node : node.parentElement);
+    return Boolean(element && element.closest && element.closest(".stream"));
+  }
+
   function startObserver() {
     if (typeof MutationObserver !== "function") return;
     const observer = new MutationObserver(function (mutations) {
       let relevant = false;
       for (const mutation of mutations) {
+        // 实时事件流每秒都在变，和梗条目无关，忽略以免反复重排星标。
+        if (isLiveStreamNode(mutation.target)) continue;
         if (mutation.type === "characterData") {
           relevant = true;
         } else if (mutation.type === "childList") {
@@ -335,6 +609,12 @@
     window.addEventListener("hashchange", function () {
       scheduleScan(60);
     });
+    window.addEventListener("resize", function () {
+      scheduleScan(120);
+    });
+    document.addEventListener("load", function () {
+      scheduleScan(120);
+    }, true);
   }
 
   function init() {
