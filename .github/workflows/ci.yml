@@ -46,10 +46,10 @@ jobs:
       - name: Lint extension (errors fail, warnings printed)
         run: |
           set -o pipefail
-          web-ext lint --source-dir . --output json --pretty > web-ext-lint.json
+          web-ext lint --source-dir . --output json --pretty > /tmp/web-ext-lint.json
           python3 - <<'PY'
           import json, sys
-          with open("web-ext-lint.json", encoding="utf-8") as f:
+          with open("/tmp/web-ext-lint.json", encoding="utf-8") as f:
               report = json.load(f)
           errors = report.get("errors", [])
           warnings = report.get("warnings", [])
