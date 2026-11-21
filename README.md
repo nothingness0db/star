@@ -11,6 +11,7 @@
 在 `sb6657.cn` 上授权后，每条梗旁边会出现一个星标，点一下即可收藏。
 
 - 纯本地：收藏与梗库缓存都只存在 `browser.storage.local`，不收集、不上传、不需要账号。
+- 可选的 GitHub Gist 手动备份：由你主动导出/恢复，只上传收藏 JSON；token 只保存在本机。
 - 零构建：没有依赖、没有打包步骤，源码即扩展。
 - Manifest V3，Firefox 140+。
 
@@ -18,7 +19,7 @@
 
 - 快捷键 `Alt+Shift+S` 收藏当前选中文字（可在 about:addons 修改）。
 - 条目标签、备注、置顶，以及站点/标签筛选与四种排序；筛选与置顶等状态持久化。
-- 设置面板：主题、保存反馈、梗库自动更新、站内授权、数据统计、备份导入导出与清空。
+- 设置面板：主题、保存反馈、梗库自动更新、站内授权、GitHub Gist 备份、数据统计、备份导入导出与清空。
 - 首次安装显示三步引导，关闭后不再自动弹出。
 
 ## 安装（临时加载）
@@ -89,6 +90,20 @@ extensions.webextensions.keepUuidOnUninstall = true
 - **导出**：导出 JSON（完整备份，可再导入）或 Markdown（方便阅读/粘贴到笔记）。
 - **导入 JSON**：与现有收藏合并，按 id、以及「正文 + 网址」去重；标签、备注、置顶会一并导入，旧格式 JSON 仍可导入。
 - **来源**：点击标题或域名，在新标签页打开原网页。
+
+### GitHub Gist 备份（手动）
+
+在「设置 → GitHub Gist 备份」里可以手动把收藏备份到自己的 Gist，或从 Gist 恢复：
+
+1. 到 GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)，生成只勾选 **gist** scope 的 token。
+2. 在设置里填入 token 并点「保存配置」。token **只保存在本机** `browser.storage.local`，不会写入 `settings`、备份文件或日志。
+3. 点「导出到 Gist」：Gist ID 为空时新建一个 **secret Gist**，文件名为 `star-backup.json`；已填 ID 时更新该 Gist 的同一文件。
+4. 点「从 Gist 恢复」：读取 Gist 里的 JSON，沿用「导入 JSON」的合并逻辑，按 id 与「正文 + 网址」去重，并显示新增/跳过条数。
+
+第一版只做手动导出/恢复，不做定时或实时同步。备份内容与「导出 JSON」完全一致，只有收藏条目（`app` / `version` / `exportedAt` / `count` / `entries`）；
+梗库缓存、设置、token 和 Gist ID 都不会上传。token 只用于 `https://api.github.com/gists` 及 `https://api.github.com/gists/{id}`，请求失败时只显示可读提示，不回显 token。
+
+> 请勿把 token 提交到仓库或贴到截图/日志里。泄露后立即在 GitHub 撤销该 token。
 
 ### 梗库
 
@@ -180,6 +195,7 @@ Firefox MV3 不会自动授予站点权限，所以默认**不会**在 6657 注�
 - **保存反馈**：工具栏角标、库页面轻提示可分别开关；快捷键无选中时的页面提示始终显示。
 - **梗库自动更新**：默认开启，缓存超过 7 天时自动拉取；关闭后只在手动点「更新梗库」时联网，并显示缓存大小。
 - **站内增强**：沿用 6657 的授权/撤销流程，只作用于 sb6657.cn，站点改版可能失效。
+- **GitHub Gist 备份**：填写仅 gist scope 的 token 与 Gist ID，手动导出到 secret Gist 或从中恢复；token 只存本机。
 - **数据**：显示条目数、梗命中数、站点数与占用字节，可导出备份、导入、二次确认清空。
 
 ## 权限说明
@@ -190,6 +206,9 @@ Firefox MV3 不会自动授予站点权限，所以默认**不会**在 6657 注�
 | `menus` | 添加「收藏这句」右键菜单 |
 | `activeTab` + `scripting` | 快捷键读取当前页选中文字，并在无选中时显示页面轻提示 |
 | `optional_host_permissions: https://sb6657.cn/*` | 可选：在 6657 页面注入星标、读取梗文本；默认不申请，需在设置里手动开启 |
+| `host_permissions: https://api.github.com/*` | 手动备份/恢复时访问 GitHub Gist API，仅访问 gists 相关路径 |
+
+扩展本身不收集数据；Gist 备份由你手动触发，token 只存 `storage.local`，不进入 `settings`、备份内容、日志或任何远端。
 
 没有内容脚本会默认运行：`content/sb6657.js` 只在用户通过「设置」授予
 `https://sb6657.cn/*` 后才会被 Firefox 注入。不使用 `notifications`，不收集数据。
@@ -206,6 +225,7 @@ library.css      样式（浅色/深色、响应式）
 library.js       句子库交互、梗库状态与授权设置
 lib/store.js     共享存储与导入导出模块
 lib/memes.js     梗库下载、编码解码、缓存与匹配
+lib/gist.js      GitHub Gist 手动备份/恢复、token 仅存 storage.local
 icons/           16/32/48/96 图标
 ```
 
@@ -219,6 +239,7 @@ icons/           16/32/48/96 图标
   原 URL 可能已经对应不到那条内容；此时点击来源只会打开该地址，扩展不会报错，也不做全文抓取。
 - 动态页面（如 Twitter/X、部分信息流）刷新后内容会变化，收藏的是当时的文字，
   与 URL 当前显示的内容可能不一致。
+- Gist 备份为手动快照，不做实时同步或自动定时；恢复按现有导入规则去重，不会覆盖本地更新的同 id 条目。
 - 只支持 http/https 页面；`about:`、扩展页等浏览器内部页面不会出现收藏菜单。
 - 选中文字若被网页脚本拦截（极少数站点），右键菜单可能拿不到文本；此时会提示失败。
 - 收藏量非常大（数万条）时，页面一次性渲染会变慢；日常使用规模没有影响。

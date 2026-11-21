@@ -13,6 +13,7 @@
     }
   },
   "permissions": ["storage", "menus", "activeTab", "scripting"],
+  "host_permissions": ["https://api.github.com/*"],
   "optional_host_permissions": ["https://sb6657.cn/*"],
   "commands": {
     "save-selection": {
@@ -23,7 +24,7 @@
     }
   },
   "background": {
-    "scripts": ["lib/store.js", "lib/memes.js", "background.js"]
+    "scripts": ["lib/store.js", "lib/memes.js", "lib/gist.js", "background.js"]
   },
   "content_scripts": [
     {

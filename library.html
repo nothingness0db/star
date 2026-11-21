@@ -195,6 +195,23 @@
       </div>
     </section>
     <section class="setting-block">
+      <h3>GitHub Gist 备份</h3>
+      <p>手动备份到 <strong>secret Gist</strong>，或从 Gist 恢复（与本地按 id、正文+网址合并去重）。不做实时同步。</p>
+      <label class="field-row">Personal Access Token
+        <input id="gistToken" type="password" placeholder="仅勾选 gist scope" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field-row">Gist ID
+        <input id="gistId" type="text" placeholder="留空则导出时新建" autocomplete="off" spellcheck="false">
+      </label>
+      <p>token 只需 gist scope，只保存在本机 <code>storage.local</code>，不会写入设置、备份、日志或任何远端；请妥善保管，不要提交到仓库。</p>
+      <p id="gistStatus" class="setting-status">状态：读取中…</p>
+      <div class="dialog-actions setting-actions">
+        <button id="gistSaveBtn" class="btn" type="button">保存配置</button>
+        <button id="gistExportBtn" class="btn" type="button">导出到 Gist</button>
+        <button id="gistImportBtn" class="btn" type="button">从 Gist 恢复</button>
+      </div>
+    </section>
+    <section class="setting-block">
       <h3>数据</h3>
       <p id="dataStats" class="setting-status">统计中…</p>
       <div class="dialog-actions setting-actions">

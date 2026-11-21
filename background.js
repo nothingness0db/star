@@ -1,4 +1,4 @@
-/* global SentenceStore, MemeLib */
+/* global SentenceStore, MemeLib, GistBackup */
 
 const MENU_ID = "save-sentence";
 const BADGE_MS = 1800;
@@ -262,6 +262,31 @@ browser.runtime.onMessage.addListener(function (message, sender) {
 
   if (message.type === "getMemeInfo") {
     return getMemeInfo();
+  }
+
+  if (message.type === "gistSaveCredentials") {
+    return GistBackup.saveCredentials({
+      token: message.token,
+      gistId: message.gistId
+    }).catch(function () {
+      return { ok: false, error: "保存 GitHub 配置失败" };
+    });
+  }
+
+  if (message.type === "gistExport") {
+    return GistBackup.exportToGist().then(function (result) {
+      return Object.assign({ ok: true }, result);
+    }).catch(function (error) {
+      return { ok: false, error: String((error && error.message) || "导出到 Gist 失败") };
+    });
+  }
+
+  if (message.type === "gistImport") {
+    return GistBackup.importFromGist().then(function (result) {
+      return Object.assign({ ok: true }, result);
+    }).catch(function (error) {
+      return { ok: false, error: String((error && error.message) || "从 Gist 恢复失败") };
+    });
   }
 
   if (message.type === "refreshMemes") {

@@ -47,6 +47,12 @@
   const settingsImportBtn = document.getElementById("settingsImportBtn");
   const settingsClearBtn = document.getElementById("settingsClearBtn");
   const settingsWelcome = document.getElementById("settingsWelcome");
+  const gistToken = document.getElementById("gistToken");
+  const gistId = document.getElementById("gistId");
+  const gistStatus = document.getElementById("gistStatus");
+  const gistSaveBtn = document.getElementById("gistSaveBtn");
+  const gistExportBtn = document.getElementById("gistExportBtn");
+  const gistImportBtn = document.getElementById("gistImportBtn");
 
   const SITE_ORIGIN = "https://sb6657.cn/*";
 
@@ -710,9 +716,25 @@
       bytes = raw && raw.memes ? new TextEncoder().encode(JSON.stringify(raw.memes)).length : 0;
     } catch (error) { /* 忽略 */ }
     memeCacheSize.textContent = "缓存大小：约 " + (bytes / 1024).toFixed(0) + " KB（梗 " + (info ? info.count : 0) + " 条）";
+    await refreshGistUI();
     const stats = await store.stats();
     dataStats.textContent = "条目 " + stats.entries + " 条 · 梗命中 " + stats.memes + " 条 · 站点 " + stats.sites +
       " 个 · 占用约 " + (stats.bytes / 1024).toFixed(1) + " KB";
+  }
+
+  // token 只通过消息交给 background 写入 storage.local；这里不留副本、不打印。
+  async function refreshGistUI() {
+    const data = await browser.storage.local.get("githubGist");
+    const saved = (data && data.githubGist) || {};
+    gistId.value = String(saved.gistId || "");
+    gistToken.value = "";
+    gistToken.placeholder = saved.token ? "已保存（留空则不修改）" : "仅勾选 gist scope";
+    gistStatus.textContent = "状态：" + (saved.token ? "已保存 token" : "未保存 token") +
+      " · " + (saved.gistId ? "已记录 Gist ID" : "尚未设置 Gist ID（导出时新建）");
+  }
+
+  function gistError(result) {
+    return (result && result.error) || "未知错误";
   }
 
   function showWelcome() {
@@ -754,6 +776,57 @@
   autoUpdate.addEventListener("change", async function () {
     settings = await store.saveSettings({ autoUpdateMemes: autoUpdate.checked });
   });
+  gistSaveBtn.addEventListener("click", async function () {
+    gistStatus.textContent = "状态：保存中…";
+    try {
+      const patch = { gistId: gistId.value.trim() };
+      if (gistToken.value.trim()) patch.token = gistToken.value.trim();
+      const result = await browser.runtime.sendMessage({ type: "gistSaveCredentials", token: patch.token, gistId: patch.gistId });
+      if (!result || result.ok === false) {
+        gistStatus.textContent = "状态：" + ((result && result.error) || "保存失败");
+        return;
+      }
+      gistToken.value = "";
+      await refreshGistUI();
+      showToast("已保存 GitHub Gist 配置");
+    } catch (error) {
+      gistStatus.textContent = "状态：保存失败";
+    }
+  });
+
+  gistExportBtn.addEventListener("click", async function () {
+    gistStatus.textContent = "状态：导出中…";
+    try {
+      const result = await browser.runtime.sendMessage({ type: "gistExport" });
+      if (!result || result.ok === false) {
+        gistStatus.textContent = "状态：" + gistError(result);
+        return;
+      }
+      await refreshGistUI();
+      gistStatus.textContent = "状态：已" + (result.created ? "创建" : "更新") + " secret Gist，" + result.count + " 条";
+      showToast("已导出 " + result.count + " 条到 Gist");
+    } catch (error) {
+      gistStatus.textContent = "状态：导出失败";
+    }
+  });
+
+  gistImportBtn.addEventListener("click", async function () {
+    gistStatus.textContent = "状态：恢复中…";
+    try {
+      const result = await browser.runtime.sendMessage({ type: "gistImport" });
+      if (!result || result.ok === false) {
+        gistStatus.textContent = "状态：" + gistError(result);
+        return;
+      }
+      await reload();
+      gistStatus.textContent = "状态：恢复完成，新增 " + result.added + " 条，跳过 " + result.skipped + " 条重复" +
+        (result.invalid ? "，忽略 " + result.invalid + " 条无效数据" : "");
+      showToast("已从 Gist 恢复 " + result.added + " 条");
+    } catch (error) {
+      gistStatus.textContent = "状态：恢复失败";
+    }
+  });
+
   exportBackupBtn.addEventListener("click", function () {
     exportJsonBtn.click();
   });

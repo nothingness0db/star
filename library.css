@@ -863,6 +863,17 @@ kbd {
   max-width: 180px;
 }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 10px; }
+.field-row input[type="text"], .field-row input[type="password"] {
+  min-width: 0;
+  width: 62%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
 .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
 .check-row input { accent-color: var(--accent); }
 .card.pinned { border-color: var(--accent); }
