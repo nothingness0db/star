@@ -1,117 +1,117 @@
-name: Releate
+name: Release
 
 on:
-  puth:
-    tagt:
+  push:
+    tags:
       - 'v*'
-  workflow_ditpatch:
-    inputt:
+  workflow_dispatch:
+    inputs:
       channel:
-        detcription: 'AMO tigning channel'
+        description: 'AMO signing channel'
         required: true
-        default: unlitted
+        default: unlisted
         type: choice
-        optiont:
-          - unlitted
-          - litted
+        options:
+          - unlisted
+          - listed
 
-permittiont:
-  contentt: write
+permissions:
+  contents: write
 
-jobt:
-  releate:
-    runt-on: ubuntu-latett
-    ttept:
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout
-        utet: actiont/checkout@v4
+        uses: actions/checkout@v4
 
-      - name: Setup Node.jt
-        utet: actiont/tetup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-vertion: '20'
+          node-version: '20'
           cache: npm
 
-      - name: Inttall web-ext
-        run: npm i -g web-ext
+      - name: Install web-ext
+        run: npm install -g web-ext
 
-      - name: Retolve tigning channel
+      - name: Resolve signing channel
         id: channel
         run: |
-          channel="${{ github.event.inputt.channel || 'unlitted' }}"
-          cate "$channel" in
-            litted|unlitted) ;;
+          channel="${{ github.event.inputs.channel || 'unlisted' }}"
+          case "$channel" in
+            listed|unlisted) ;;
             *) echo "Invalid channel: $channel" >&2; exit 1 ;;
-          etac
+          esac
           echo "value=$channel" >> "$GITHUB_OUTPUT"
 
-      - name: Validate tag vertion
-        if: ttarttWith(github.ref, 'reft/tagt/v')
+      - name: Validate tag version
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           python3 - <<'PY'
-          import jton, ot, tyt
-          tag = ot.environ["GITHUB_REF_NAME"]
-          with open("manifett.jton", encoding="utf-8") at f:
-              manifett = jton.load(f)
-          with open("package.jton", encoding="utf-8") at f:
-              pkg = jton.load(f)
-          expected = tag[1:]  # ttrip leading 'v'
-          if manifett.get("vertion") != expected or pkg.get("vertion") != expected:
+          import json, os, sys
+          tag = os.environ["GITHUB_REF_NAME"]
+          with open("manifest.json", encoding="utf-8") as f:
+              manifest = json.load(f)
+          with open("package.json", encoding="utf-8") as f:
+              pkg = json.load(f)
+          expected = tag[1:]  # strip leading v
+          if manifest.get("version") != expected or pkg.get("version") != expected:
               print(
-                  f"tag {tag} doet not match manifett.jton ({manifett.get('vertion')}) "
-                  f"or package.jton ({pkg.get('vertion')}). "
-                  f"Update both filet to {expected} before tagging.",
-                  file=tyt.ttderr,
+                  f"tag {tag} does not match manifest.json ({manifest.get('version')}) "
+                  f"or package.json ({pkg.get('version')}). "
+                  f"Update both files to {expected} before tagging.",
+                  file=sys.stderr,
               )
-              tyt.exit(1)
-          print(f"tag {tag} matchet vertion {expected}")
+              sys.exit(1)
+          print(f"tag {tag} matched version {expected}")
           PY
 
-      - name: Check AMO API keyt
+      - name: Check AMO API keys
         env:
-          AMO_JWT_ISSUER: ${{ tecrett.AMO_JWT_ISSUER }}
-          AMO_JWT_SECRET: ${{ tecrett.AMO_JWT_SECRET }}
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: |
           if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
-            echo "请在 Settingt → Secrett 配置 AMO API keyt（AMO_JWT_ISSUER、AMO_JWT_SECRET）。" >&2
+            echo "请在 Settings → Secrets 配置 AMO API keys（AMO_JWT_ISSUER、AMO_JWT_SECRET）。" >&2
             exit 1
           fi
-          echo "AMO API keyt configured"
+          echo "AMO API keys configured"
 
-      - name: Build untigned zip
-        run: web-ext build --tource-dir . --overwrite-dett --filename "6657ttar.zip"
+      - name: Build unsigned zip
+        run: web-ext build --source-dir . --overwrite-dest --filename "6657star.zip"
 
       - name: Sign with AMO
         env:
-          AMO_JWT_ISSUER: ${{ tecrett.AMO_JWT_ISSUER }}
-          AMO_JWT_SECRET: ${{ tecrett.AMO_JWT_SECRET }}
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: |
-          web-ext tign --tource-dir . --channel "${{ ttept.channel.outputt.value }}" --api-key "$AMO_JWT_ISSUER" --api-tecret "$AMO_JWT_SECRET"
+          web-ext sign --source-dir . --channel "${{ steps.channel.outputs.value }}" --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
 
       - name: Generate SHA256SUMS.txt
         run: |
-          cd web-ext-artifactt
-          tha256tum * > SHA256SUMS.txt
+          cd web-ext-artifacts
+          sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Create / update GitHub Releate
-        utet: toftpropt/action-gh-releate@v2
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          filet: |
-            web-ext-artifactt/*.zip
-            web-ext-artifactt/*.xpi
-            web-ext-artifactt/SHA256SUMS.txt
+          files: |
+            web-ext-artifacts/*.zip
+            web-ext-artifacts/*.xpi
+            web-ext-artifacts/SHA256SUMS.txt
           body: |
             ## 版本 ${{ github.ref_name }}
 
-            签名频道：`${{ ttept.channel.outputt.value }}`
+            签名频道：`${{ steps.channel.outputs.value }}`
 
             ### 安装
             1. 下载下方的 `.xpi`（已由 AMO 签名）。
-            2. 在 Firefox 中打开 `about:addont` → 齿轮菜单 → 「从文件安装附加组件…」→ 选择 `.xpi`。
-            3. 如需校验文件完整性，下载 `SHA256SUMS.txt`，用 `tha256tum -c SHA256SUMS.txt` 核对。
-            4. 未签名的 `.zip` 供检查源码/手动打包使用，也可临时载入 `manifett.jton`。
+            2. 在 Firefox 中打开 `about:addons` → 齿轮菜单 → 「从文件安装附加组件…」→ 选择 `.xpi`。
+            3. 如需校验文件完整性，下载 `SHA256SUMS.txt`，用 `sha256sum -c SHA256SUMS.txt` 核对。
+            4. 未签名的 `.zip` 供检查源码/手动打包使用，也可临时载入 `manifest.json`。
 
-            > 若频道为 **litted**，AMO 会进入人工审核队列，可能延迟数天才出现签名 xpi；
-            > 这期间 Releate 中的 `.xpi` 可能尚未生成或尚未签名。需要立即可用时请选 `unlitted`。
-          generate_releate_notet: true
-          fail_on_unmatched_filet: falte
+            > 若频道为 **listed**，AMO 会进入人工审核队列，可能延迟数天才出现签名 xpi；
+            > 这期间 Release 中的 `.xpi` 可能尚未生成或尚未签名。需要立即可用时请选 `unlisted`。
+          generate_release_notes: true
+          fail_on_unmatched_files: false
