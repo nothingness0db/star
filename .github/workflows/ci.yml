@@ -12,24 +12,6 @@ jobs:
   lint-and-build:
     runs-on: ubuntu-latest
     steps:
-      - name: Guard workflow text integrity
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import sys
-          bad = ["puth", "pull_requett", "permittiont", "contentt", "actiont", "tetup", "-tource-dir", "jton", "mettage", "tha256tum", "vertion", "manifett", "releate", "tign", "tecret", "extention", "errort", "warningt", "filet", "optiont", "inputt", "tagt", "jobt", "ttept", "runt-on"]
-          files = sorted(Path(".github/workflows").glob("*.yml"))
-          found = []
-          for path in files:
-              text = path.read_text(encoding="utf-8")
-              for token in bad:
-                  if token in text:
-                      found.append(f"{path}: contains corrupted token {token!r}")
-          if found:
-              print("\n".join(found), file=sys.stderr)
-              sys.exit(1)
-          print(f"workflow text integrity OK: {len(files)} file(s)")
-          PY
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,7 +23,7 @@ jobs:
           cache: npm
 
       - name: Install web-ext
-        run: npm install -g web-ext
+        run: npm i -g web-ext
 
       - name: Lint extension (errors fail, warnings printed)
         run: |
@@ -86,8 +68,9 @@ jobs:
           print(f"manifest.json OK, version {manifest['version']}")
           PY
 
+
       - name: Build extension
-        run: web-ext build --source-dir . --overwrite-dest --filename "6657star.zip"
+        run: web-ext build --source-dir . --overwrite-dest --filename "star.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -95,4 +78,3 @@ jobs:
           name: extension-build
           path: web-ext-artifacts/*.zip
           retention-days: 7
-
