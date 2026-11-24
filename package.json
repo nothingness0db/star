@@ -1,6 +1,6 @@
 {
   "name": "star",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
   "description": "Firefox MV3 划词收藏扩展（零构建）",
   "scripts": {
