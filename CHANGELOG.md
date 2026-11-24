@@ -10,8 +10,15 @@
 - 快捷键 Alt+Shift+S、标签/备注/置顶、排序与筛选、设置面板、首次安装引导。
 
 - CI：push(main) 与 PR 时跑 `web-ext lint`、`node --check`、manifest 版本一致性校验与 `web-ext build`，上传构建产物（保留 7 天）。
-- 发版流水线：打 `v*` tag 自动 build、AMO 签名、生成 `SHA256SUMS.txt` 并创建 GitHub Release；支持 `workflow_dispatch` 选择 `listed` / `unlisted` 频道。
+- 发版流水线：打 `v*` tag 自动 build 未签名 zip、生成 `SHA256SUMS.txt` 并创建 GitHub Release（上架后不再由 CI 向 AMO 签名）。
 - 开源常用文件：CONTRIBUTING、issue/PR 模板、发布文档、编辑器与 Git 配置、badges。
+
+## [1.1.4] - 2026-11-25
+
+### Changed
+
+- 以新 ID \`star@nothingness0db\` 在 AMO 上架（listed 渠道）。旧 ID \`star-public@nothingness0db\` 已被自己分发（unlisted）条目占用，AMO 的渠道在提交时即固定、不可切换。
+- 发版流水线改为只产出未签名构建产物：listed 条目无法再用其他渠道签名，发布与更新统一在 AMO Developer Hub 完成。
 
 ## [1.1.0] - 2026-11-19
 
