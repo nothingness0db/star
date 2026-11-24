@@ -38,6 +38,8 @@ jobs:
       - name: Resolve signing channel
         id: channel
         run: |
+          version=$(python3 -c "import json;print(json.load(open('manifest.json',encoding='utf-8'))['version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           channel="${{ github.event.inputs.channel || 'unlisted' }}"
           case "$channel" in
             listed|unlisted) ;;
@@ -95,9 +97,21 @@ jobs:
           cat SHA256SUMS.txt
 
 
+      - name: Ensure release tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version=$(python3 -c "import json;print(json.load(open('manifest.json',encoding='utf-8'))['version'])")
+            tag="v"$version
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -fa "$tag" -m "Release $tag"
+            git push origin "$tag" --force
+          fi
+
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.channel.outputs.version) || github.ref_name }}
           files: |
             web-ext-artifacts/*.zip
             web-ext-artifacts/*.xpi
