@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "star",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "划选网页文字，右键收藏到 star；可选匹配 sb6657 梗库，显示梗 id、热度与标签。",
   "browser_specific_settings": {
     "gecko": {
