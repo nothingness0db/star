@@ -1,4 +1,4 @@
-/* global SentenceStore, MemeLib, GistBackup */
+/* global SentenceStore, MemeLib, GistBackup, WebDAVBackup */
 
 const MENU_ID = "save-sentence";
 const BADGE_MS = 1800;
@@ -286,6 +286,43 @@ browser.runtime.onMessage.addListener(function (message, sender) {
       return Object.assign({ ok: true }, result);
     }).catch(function (error) {
       return { ok: false, error: String((error && error.message) || "从 Gist 恢复失败") };
+    });
+  }
+
+  if (message.type === "webdavSaveCredentials") {
+    return WebDAVBackup.saveCredentials({
+      url: message.url,
+      username: message.username,
+      password: message.password,
+      path: message.path
+    }).then(function (result) {
+      return Object.assign({ ok: true }, result);
+    }).catch(function (error) {
+      return { ok: false, error: String((error && error.message) || "保存 WebDAV 配置失败") };
+    });
+  }
+
+  if (message.type === "webdavSync") {
+    return WebDAVBackup.sync().then(function (result) {
+      return Object.assign({ ok: true }, result);
+    }).catch(function (error) {
+      return { ok: false, error: String((error && error.message) || "WebDAV 合并备份失败") };
+    });
+  }
+
+  if (message.type === "webdavRestore") {
+    return WebDAVBackup.restore().then(function (result) {
+      return Object.assign({ ok: true }, result);
+    }).catch(function (error) {
+      return { ok: false, error: String((error && error.message) || "从 WebDAV 恢复失败") };
+    });
+  }
+
+  if (message.type === "webdavClearCredentials") {
+    return WebDAVBackup.clearCredentials().then(function () {
+      return { ok: true };
+    }).catch(function () {
+      return { ok: false, error: "清除 WebDAV 凭据失败" };
     });
   }
 

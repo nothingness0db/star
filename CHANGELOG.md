@@ -5,6 +5,29 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-27
+
+### Added
+
+- 设置新增「WebDAV 备份（坚果云）」：手动「合并并备份」与「从 WebDAV 合并恢复」，默认远程路径
+  `6657star/star-backup.json`，支持通用 HTTPS WebDAV + Basic auth。
+- 同步固定为「先 GET 远端 → 按 id 与正文+网址合并 → 保存本地 → 最后 PUT 合并结果」，
+  不会用本地数据直接覆盖远端；远端 JSON 无效或不是 star 备份时停止，不写本地也不上传。
+- 条目新增 `updatedAt`：同 id 的正文/标题/网址取较新一方，标签取并集，备注/梗取较新或非空一方，
+  置顶取 OR；旧数据缺省用 `createdAt`，加载时自动迁移。
+- `lib/webdav.js`：逐段校验远程路径并创建目录、ETag 条件写入、412 冲突重新 GET 合并后重试一次、
+  20 秒超时与中文错误提示。
+- WebDAV 账号与应用密码只存 `storage.local` 独立键，支持「清除凭据」；申请权限时按用户配置的
+  HTTPS origin 请求，拒绝则不发起网络请求。
+- `scripts/test-merge.test.mjs` 与 `npm test`：覆盖新增、同 id 双向合并、标签并集、补全、
+  fingerprint 去重、旧数据、幂等、无效远端不落盘与不删除；CI 运行 `npm test`。
+
+### Changed
+
+- 版本升至 1.2.0；`manifest.json` 的 `optional_host_permissions` 增加 `https://*/*`（可选，按原点申请），
+  不新增必选 `host_permissions`。
+- README 补充坚果云第三方应用密码、默认目录、合并/不删除规则与手动同步说明。
+
 ## [1.1.6] - 2026-11-27
 
 ### Changed
