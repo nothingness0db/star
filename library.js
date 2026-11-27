@@ -54,9 +54,6 @@
   const gistExportBtn = document.getElementById("gistExportBtn");
   const gistImportBtn = document.getElementById("gistImportBtn");
   const updateStatus = document.getElementById("updateStatus");
-  const checkUpdateBtn = document.getElementById("checkUpdateBtn");
-  const applyUpdateBtn = document.getElementById("applyUpdateBtn");
-  const downloadUpdateBtn = document.getElementById("downloadUpdateBtn");
 
   const SITE_ORIGIN = "https://sb6657.cn/*";
 
@@ -67,9 +64,6 @@
   let tagFilterValue = "";
   let sortValue = "new";
   let settings = null;
-  let pendingUpdateVersion = "";
-  let pendingUpdateDownloaded = false;
-  let pendingUpdateLink = "";
   const FILTER_KEY = "filters";
   const VIEW_KEY = "welcomeViewed";
   let toastTimer = null;
@@ -724,7 +718,7 @@
     } catch (error) { /* 忽略 */ }
     memeCacheSize.textContent = "缓存大小：约 " + (bytes / 1024).toFixed(0) + " KB（梗 " + (info ? info.count : 0) + " 条）";
     await refreshGistUI();
-    renderUpdateIdle();
+    renderUpdateInfo();
     const stats = await store.stats();
     dataStats.textContent = "条目 " + stats.entries + " 条 · 梗命中 " + stats.memes + " 条 · 站点 " + stats.sites +
       " 个 · 占用约 " + (stats.bytes / 1024).toFixed(1) + " KB";
@@ -745,7 +739,7 @@
     return (result && result.error) || "未知错误";
   }
 
-  // ---- 设置：检查更新（GitHub Release + update_url） ----
+  // ---- 设置：更新（AMO 商店版） ----
   function currentVersion() {
     try {
       return browser.runtime.getManifest().version;
@@ -754,157 +748,8 @@
     }
   }
 
-  function versionParts(raw) {
-    return String(raw || "").split(".").map(function (part) {
-      const value = parseInt(part, 10);
-      return Number.isFinite(value) ? value : 0;
-    });
-  }
-
-  function compareVersions(left, right) {
-    const a = versionParts(left);
-    const b = versionParts(right);
-    const length = Math.max(a.length, b.length);
-    for (let index = 0; index < length; index += 1) {
-      const diff = (a[index] || 0) - (b[index] || 0);
-      if (diff !== 0) return diff > 0 ? 1 : -1;
-    }
-    return 0;
-  }
-
-  function updateGeckoInfo() {
-    try {
-      const manifest = browser.runtime.getManifest();
-      return (manifest.browser_specific_settings && manifest.browser_specific_settings.gecko) || {};
-    } catch (error) {
-      return {};
-    }
-  }
-
-  function releaseApiUrl() {
-    const updateUrl = updateGeckoInfo().update_url;
-    if (!updateUrl) return "";
-    try {
-      const parts = new URL(updateUrl).pathname.split("/").filter(Boolean);
-      if (parts.length < 2) return "";
-      return "https://api.github.com/repos/" + parts[0] + "/" + parts[1] + "/releases/latest";
-    } catch (error) {
-      return "";
-    }
-  }
-
-  // Firefox 目前没有实现 runtime.requestUpdateCheck，因此回退到 GitHub Releases API
-  //（复用现有 api.github.com host permission）。它只能发现新版本，真正下载仍由
-  // Firefox 按 update_url 自动完成；已下载的更新会通过 onUpdateAvailable 通知。
-  async function fetchLatestUpdate() {
-    const apiUrl = releaseApiUrl();
-    if (!apiUrl) throw new Error("无法从 manifest 的 update_url 推导仓库地址");
-    const response = await fetch(apiUrl, {
-      cache: "no-store",
-      headers: { Accept: "application/vnd.github+json" }
-    });
-    if (!response.ok) throw new Error("GitHub Release 查询 HTTP " + response.status);
-    const data = await response.json();
-    const version = String(data && data.tag_name || "").replace(/^v/i, "");
-    if (!version) throw new Error("最新 Release 没有 tag 版本号");
-    const assets = data && Array.isArray(data.assets) ? data.assets : [];
-    const xpi = assets.find(function (asset) {
-      return /^star-.*\.xpi$/i.test(String(asset && asset.name || ""));
-    }) || assets.find(function (asset) {
-      return /\.xpi$/i.test(String(asset && asset.name || ""));
-    });
-    return {
-      version: version,
-      update_link: (xpi && xpi.browser_download_url) || data.html_url || ""
-    };
-  }
-
-  function showUpdateAvailable(version, downloaded, link) {
-    pendingUpdateVersion = String(version || pendingUpdateVersion || "");
-    pendingUpdateDownloaded = Boolean(downloaded);
-    pendingUpdateLink = String(link || pendingUpdateLink || "");
-    applyUpdateBtn.hidden = !pendingUpdateDownloaded;
-    applyUpdateBtn.disabled = false;
-    downloadUpdateBtn.hidden = pendingUpdateDownloaded || !pendingUpdateLink;
-    if (pendingUpdateDownloaded) {
-      updateStatus.textContent = "状态：发现新版本 " + pendingUpdateVersion +
-        "，Firefox 已下载，点击「应用更新并重载」完成更新";
-    } else {
-      updateStatus.textContent = "状态：发现新版本 " + pendingUpdateVersion +
-        "（Firefox 尚未下载），可点「下载签名 XPI」手动安装，或等待自动更新";
-    }
-  }
-
-  function renderUpdateIdle() {
-    if (pendingUpdateVersion) {
-      showUpdateAvailable(pendingUpdateVersion, pendingUpdateDownloaded, pendingUpdateLink);
-      return;
-    }
-    applyUpdateBtn.hidden = true;
-    downloadUpdateBtn.hidden = true;
-    updateStatus.textContent = "状态：当前版本 " + currentVersion();
-  }
-
-  function updateErrorMessage(error) {
-    return String((error && error.message) || error || "未知错误").replace(/^Error:\s*/, "");
-  }
-
-  function applyUpdateCheckResult(result) {
-    const status = result && result.status;
-    if (status === "update_available") {
-      showUpdateAvailable(result.version, true, "");
-      showToast("发现新版本 " + (result.version || ""));
-      return;
-    }
-    if (status === "no_update") {
-      pendingUpdateVersion = "";
-      pendingUpdateDownloaded = false;
-      pendingUpdateLink = "";
-      applyUpdateBtn.hidden = true;
-      downloadUpdateBtn.hidden = true;
-      updateStatus.textContent = "状态：已是最新（当前版本 " + currentVersion() + "）";
-      return;
-    }
-    if (status === "throttled") {
-      updateStatus.textContent = "状态：检查过于频繁，Firefox 暂时限制了检查，请稍后再试";
-      return;
-    }
-    throw new Error("未返回可识别的结果");
-  }
-
-  async function checkForUpdate() {
-    checkUpdateBtn.disabled = true;
-    updateStatus.textContent = "状态：检查中…";
-    try {
-      if (typeof browser.runtime.requestUpdateCheck === "function") {
-        try {
-          applyUpdateCheckResult(await browser.runtime.requestUpdateCheck());
-          return;
-        } catch (error) {
-          console.warn("[句子库] runtime.requestUpdateCheck 不可用，改用 update_url 检查", error);
-        }
-      }
-      const latest = await fetchLatestUpdate();
-      if (pendingUpdateDownloaded && compareVersions(pendingUpdateVersion, latest.version) >= 0) {
-        showUpdateAvailable(pendingUpdateVersion, true, "");
-      } else if (compareVersions(latest.version, currentVersion()) > 0) {
-        showUpdateAvailable(latest.version, false, latest.update_link || "");
-        showToast("发现新版本 " + latest.version);
-      } else {
-        pendingUpdateVersion = "";
-        pendingUpdateDownloaded = false;
-        pendingUpdateLink = "";
-        applyUpdateBtn.hidden = true;
-        downloadUpdateBtn.hidden = true;
-        updateStatus.textContent = "状态：已是最新（当前版本 " + currentVersion() + "）";
-      }
-    } catch (error) {
-      applyUpdateBtn.hidden = true;
-      downloadUpdateBtn.hidden = true;
-      updateStatus.textContent = "状态：检查失败（" + updateErrorMessage(error) + "）";
-    } finally {
-      checkUpdateBtn.disabled = false;
-    }
+  function renderUpdateInfo() {
+    updateStatus.textContent = "当前版本：" + currentVersion() + "；更新由 Firefox 在 about:addons 中检查";
   }
 
 
@@ -948,25 +793,6 @@
   autoUpdate.addEventListener("change", async function () {
     settings = await store.saveSettings({ autoUpdateMemes: autoUpdate.checked });
   });
-  checkUpdateBtn.addEventListener("click", checkForUpdate);
-  applyUpdateBtn.addEventListener("click", function () {
-    applyUpdateBtn.disabled = true;
-    checkUpdateBtn.disabled = true;
-    updateStatus.textContent = "状态：正在重载…";
-    browser.runtime.reload();
-  });
-  downloadUpdateBtn.addEventListener("click", function () {
-    if (!pendingUpdateLink) return;
-    browser.tabs.create({ url: pendingUpdateLink }).catch(function (error) {
-      console.error("[句子库] 打开更新下载页失败", error);
-    });
-  });
-  if (browser.runtime.onUpdateAvailable) {
-    browser.runtime.onUpdateAvailable.addListener(function (info) {
-      showUpdateAvailable((info && info.version) || pendingUpdateVersion, true, "");
-      showToast("扩展已下载新版本，可在「设置 → 更新」中应用");
-    });
-  }
   gistSaveBtn.addEventListener("click", async function () {
     gistStatus.textContent = "状态：保存中…";
     try {

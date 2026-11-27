@@ -36,9 +36,9 @@ npm run build       # web-ext build --source-dir . --overwrite-dest
 `web-ext lint` 的 error 会让 CI 失败；warning（例如 Firefox Android 的最低版本提示）会打印但不阻塞。
 `manifest.json` 与 `package.json` 的 `version` 必须一致，CI 会校验。
 
-打包会按 `web-ext-config.mjs` 的 `ignoreFiles` 排除 `updates.json`、`docs/`、`scripts/`、README、
-CHANGELOG 等发版/说明文件，以及 AMO 上传缓存 `.amo-upload-uuid`。新增同类文件时记得同步排除，
-避免被打进 XPI。
+打包会按 `web-ext-config.mjs` 的 `ignoreFiles` 排除 `updates.json`（1.1.5/1.1.6 旧清单）、`docs/`、
+`scripts/`、README、CHANGELOG 等发版/说明文件，以及 AMO 上传缓存 `.amo-upload-uuid`。
+新增同类文件时记得同步排除，避免被打进 XPI。
 
 ## 提 PR
 
@@ -49,24 +49,26 @@ CHANGELOG 等发版/说明文件，以及 AMO 上传缓存 `.amo-upload-uuid`。
 
 ## 发版（维护者）
 
-分发方式是自托管：AMO **unlisted** 签名 + GitHub Release + `main` 分支上的 `updates.json`。
-不再向 AMO listed 渠道提交新版本，也不在本地签名。
+分发方式是 AMO **listed** 商店：打 `v*` tag 后构建 unsigned zip，并用 AMO API 以 `listed` 渠道提交。
+不再做 unlisted 签名，不生成 `updates.json`，也不把 GitHub Release 当作更新源。
 
 1. 更新 `manifest.json` 与 `package.json` 的 `version`，并在 CHANGELOG 里把 `Unreleased` 的内容移到新版本段。
+   确认 `manifest.json` 没有 `update_url`。
 2. 配置 GitHub Secrets（仓库 Settings → Secrets and variables → Actions）：
    - `AMO_JWT_ISSUER`：AMO API key（JWT issuer）
    - `AMO_JWT_SECRET`：AMO API secret
    获取方法见 [docs/publishing.md](docs/publishing.md)。
 3. 本地跑 `npm run lint`、`npm run check`、`npm run build`。
-4. 打 tag 并 push：`git tag v1.1.5 && git push origin v1.1.5`
+4. 打 tag 并 push：`git tag v1.1.7 && git push origin v1.1.7`
    tag 名必须带 `v` 前缀，且 `v` 后面的版本号要与 `manifest.json` / `package.json` 完全一致，否则 workflow 会报错。
 5. `.github/workflows/release.yml` 会自动：
-   - 校验 tag 版本；
-   - `web-ext build` 后以 `--channel unlisted` 调 AMO 签名；
-   - 生成 `SHA256SUMS.txt`，创建/更新 GitHub Release（签名 XPI + 校验和）；
-   - 生成带 `update_hash` 的 `updates.json` 并提交回 `main`（提交信息含 `[skip ci]`）。
-6. 若 secrets 没配置或签名失败，release workflow 会明确失败并提示原因，不会静默成功。
+   - 校验 tag 版本与 manifest 无 `update_url`；
+   - `web-ext build` 并核验 zip 不含 `scripts/`、`docs/`、测试/发版文件；
+   - 用 `scripts/submit-amo.mjs` 以 `listed` 渠道提交 AMO；
+   - 保留 unsigned zip artifact 供手动上传兜底。
+6. 若 secrets 没配置或 AMO 提交失败，release workflow 会明确失败并提示原因，不会静默成功。
    不要把 API key/secret 写进仓库或 PR。
+7. AMO 返回 `public` 表示已上架；返回 `unreviewed` 等状态表示已提交、待审核，这也是成功状态，
+   不要伪造已发布。
 
-现有 1.1.4 listed 用户不会自动迁移，需要手动覆盖安装一次新签名 XPI；AMO 上的 listed 条目保留，
-是否停用由维护者手动决定。
+现有 1.1.5 / 1.1.6 自托管用户不会自动切回商店，需要手动安装一次 1.1.7；之后由 AMO 自动更新。

@@ -1,9 +1,9 @@
 name: Release
 
-# 自托管分发：打 v* tag 时用 AMO API 以 unlisted 渠道签名，
-# 把签名 XPI 上传到 GitHub Release，并把 updates.json 提交回 main。
-# Firefox 通过 manifest.json 的 update_url 从 main 上的 updates.json 自动更新。
-# 不再向 AMO listed 渠道提交新版本。
+# 打 v* tag 时构建 unsigned zip，并用 AMO API 以 listed 渠道提交新版本。
+# 更新由 Firefox 通过 AMO 商店完成；不再做 unlisted 签名、不生成 updates.json，
+# 也不把 GitHub Release 当作更新源。
+# listed 版本可能需要 AMO 人工审核：提交成功但仍在审核时按成功报告，不伪造已上架。
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -27,8 +27,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -74,7 +72,11 @@ jobs:
                   file=sys.stderr,
               )
               sys.exit(1)
-          print(f"tag {tag} matched version {expected}")
+          gecko = manifest.get("browser_specific_settings", {}).get("gecko", {})
+          if "update_url" in gecko:
+              print("manifest must not declare update_url for the AMO listed build.", file=sys.stderr)
+              sys.exit(1)
+          print(f"tag {tag} matched version {expected}; no update_url")
           PY
 
       - name: Resolve version
@@ -87,85 +89,57 @@ jobs:
       - name: Build unsigned zip
         run: web-ext build --source-dir . --overwrite-dest --filename "star-${{ steps.meta.outputs.version }}.zip"
 
-      - name: Sign with AMO (unlisted)
+      - name: Verify build output
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          set -euo pipefail
-          if ! web-ext sign --source-dir . --artifacts-dir web-ext-artifacts \
-            --channel unlisted \
-            --api-key "$AMO_JWT_ISSUER" \
-            --api-secret "$AMO_JWT_SECRET"; then
-            echo "::error::AMO unlisted 签名失败。请检查 AMO_JWT_ISSUER / AMO_JWT_SECRET 是否正确，并确认 AMO 接受 star@nothingness0db 的 unlisted 签名。"
-            exit 1
-          fi
-          signed=$(find web-ext-artifacts -maxdepth 1 -type f -name '*.xpi' -print -quit)
-          if [ -z "$signed" ]; then
-            echo "::error::web-ext sign 成功返回，但 web-ext-artifacts 中没有签名 XPI。"
-            exit 1
-          fi
-          target="web-ext-artifacts/star-${VERSION}.xpi"
-          if [ "$signed" != "$target" ]; then
-            mv "$signed" "$target"
-          fi
-          rm -f web-ext-artifacts/*.zip
-          ls -l web-ext-artifacts
+          python3 - <<'PY'
+          import json, os, sys, zipfile
+          version = os.environ["VERSION"]
+          path = f"web-ext-artifacts/star-{version}.zip"
+          with zipfile.ZipFile(path) as archive:
+              names = archive.namelist()
+              manifest = json.loads(archive.read("manifest.json"))
+          gecko = manifest.get("browser_specific_settings", {}).get("gecko", {})
+          if manifest.get("version") != version:
+              print(f"built manifest version {manifest.get('version')} != {version}", file=sys.stderr)
+              sys.exit(1)
+          if "update_url" in gecko:
+              print("built manifest still contains update_url", file=sys.stderr)
+              sys.exit(1)
+          forbidden = [
+              name for name in names
+              if name.startswith(("scripts/", "docs/", ".github/"))
+              or name in {"updates.json", "package.json", "package-lock.json", "README.md", "CHANGELOG.md", "CONTRIBUTING.md"}
+          ]
+          if forbidden:
+              print(f"build contains files that should be excluded: {forbidden}", file=sys.stderr)
+              sys.exit(1)
+          print(f"build OK: {path} ({len(names)} files, no update_url)")
+          PY
 
-      - name: Generate SHA256SUMS.txt
+      - name: Submit to AMO (listed)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          cd web-ext-artifacts
-          sha256sum "star-${{ steps.meta.outputs.version }}.xpi" | tee SHA256SUMS.txt
-          sha256sum -c SHA256SUMS.txt
+          node scripts/submit-amo.mjs \
+            --xpi "web-ext-artifacts/star-$VERSION.zip" \
+            --version "$VERSION" \
+            --channel listed \
+            --addon-id "star@nothingness0db" \
+            --addon-slug "6657-star"
 
-      - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: star ${{ steps.meta.outputs.version }}
-          files: |
-            web-ext-artifacts/star-${{ steps.meta.outputs.version }}.xpi
-            web-ext-artifacts/SHA256SUMS.txt
-          fail_on_unmatched_files: true
-          body: |
-            ## star ${{ steps.meta.outputs.version }}
-
-            使用 AMO 以 **unlisted** 渠道签名，通过 GitHub Release + `updates.json` 自托管分发。
-
-            ### 安装
-            1. 下载 `star-${{ steps.meta.outputs.version }}.xpi`。
-            2. Firefox 打开 `about:addons` → 齿轮菜单 → 「从文件安装附加组件…」→ 选择该文件。
-            3. 已安装旧版的用户可直接覆盖安装，收藏数据保留。
-
-            校验：
-
-            ```sh
-            sha256sum -c SHA256SUMS.txt
-            ```
-
-            ### 自动更新
-            Firefox 会依据 `manifest.json` 的 `update_url`
-            （`https://raw.githubusercontent.com/nothingness0db/star/main/updates.json`）自动检查更新，
-            默认约每 24 小时一次；也可在扩展「设置 → 更新」里手动检查。
-
-      - name: Commit updates.json to main
+      - name: Report submission failure
+        if: failure()
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout -B main origin/main
-          node scripts/write-updates.mjs \
-            --version "${{ steps.meta.outputs.version }}" \
-            --xpi "web-ext-artifacts/star-${{ steps.meta.outputs.version }}.xpi" \
-            --output updates.json
-          git add updates.json
-          if git diff --cached --quiet; then
-            echo "updates.json 已是最新，无需提交。"
-            exit 0
-          fi
-          git commit -m "chore: update updates.json for v${{ steps.meta.outputs.version }} [skip ci]"
-          git push origin main
+          echo "::error::AMO listed 提交失败；unsigned zip 已作为 artifact 保留，可手动上传 https://addons.mozilla.org/en-US/developers/addon/6657-star/versions/"
+          echo "不要拿 unsigned zip 冒充商店签名版，也不要换用其他 add-on ID 重试。"
 
-      - name: Remove AMO upload cache
+      - name: Upload unsigned zip for manual fallback
         if: always()
-        run: rm -f .amo-upload-uuid
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-${{ steps.meta.outputs.version }}-unsigned
+          path: web-ext-artifacts/star-${{ steps.meta.outputs.version }}.zip
+          if-no-files-found: warn
+          retention-days: 7

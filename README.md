@@ -1,7 +1,7 @@
 # star · 划词收藏（Firefox 扩展）
 
 [![CI](https://github.com/nothingness0db/star/actions/workflows/ci.yml/badge.svg)](https://github.com/nothingness0db/star/actions/workflows/ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/nothingness0db/star)](https://github.com/nothingness0db/star/releases/latest)
+[![AMO](https://img.shields.io/amo/v/6657-star?label=AMO)](https://addons.mozilla.org/firefox/addon/6657-star/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 在任意网页上**划选文字 → 右键「收藏这句」**，句子就存进本地句子库。
@@ -19,30 +19,30 @@
 
 - 快捷键 `Alt+Shift+S` 收藏当前选中文字（可在 about:addons 修改）。
 - 条目标签、备注、置顶，以及站点/标签筛选与四种排序；筛选与置顶等状态持久化。
-- 设置面板：主题、保存反馈、梗库自动更新、站内授权、GitHub Gist 备份、检查更新、数据统计、备份导入导出与清空。
+- 设置面板：主题、保存反馈、梗库自动更新、站内授权、GitHub Gist 备份、数据统计、备份导入导出与清空。
 - 首次安装显示三步引导，关闭后不再自动弹出。
 
 ## 安装
 
-正式安装使用 GitHub Release 里由 AMO 签名的 `.xpi`（自托管分发，不再向 AMO 商店 listed 渠道提交新版本）：
+从 [AMO 商店页面](https://addons.mozilla.org/firefox/addon/6657-star/) 安装最新版本：
 
-1. 打开 [最新 Release](https://github.com/nothingness0db/star/releases/latest)，下载 `star-<版本>.xpi`。
-2. 在 Firefox 中打开 `about:addons` → 右上角齿轮 → 「从文件安装附加组件…」→ 选择下载的 `.xpi`。
-3. 工具栏出现橙色引号图标即安装完成；首次打开句子库会显示三步引导。
+1. 打开 AMO 商店页面，点击「添加到 Firefox」。
+2. 在 Firefox 弹出的安装提示中确认；工具栏出现橙色引号图标即安装完成。
+3. 首次打开句子库会显示三步引导。
 
-> 扩展以 `star@nothingness0db` 的 **unlisted** 渠道签名。Firefox 正式版默认可安装 AMO 签名的扩展，
-> 不需要打开 `xpinstall.signatures.required`。
+AMO 商店版由 Mozilla 签名，不需要打开 `xpinstall.signatures.required`。
 
-### 从 AMO listed 版本迁移（1.1.4 及更早）
+### 从自托管 1.1.5 / 1.1.6 迁移
 
-1.1.4 是最后一个从 AMO 商店（listed）分发的版本。**AMO 商店安装的用户不会自动切到 GitHub 更新**，
-需要手动安装一次新版本：
+1.1.5 / 1.1.6 的 `manifest.json` 带 `update_url`，Firefox 只会按它去 GitHub 检查更新，
+**不会自动切回 AMO 商店**。需要手动覆盖安装一次 1.1.7：
 
 1. 先导出一份备份（句子库 → 导出备份），以防万一。
-2. 下载 Release 里 `1.1.5` 或更新的签名 `.xpi`，按上面的「从文件安装」覆盖安装；
-   同一个 ID 会直接升级，`storage.local` 里的收藏与设置保留。
-3. 之后自动更新走 GitHub 上的 `updates.json`，不再依赖 AMO 商店版本。
-4. AMO 商店页面不会删除；是否停用旧 listed 条目由维护者手动决定。
+2. 打开 [AMO 商店页面](https://addons.mozilla.org/firefox/addon/6657-star/) 安装 1.1.7。
+   同一个 ID（`star@nothingness0db`）且版本更高，会直接覆盖旧版，`storage.local` 里的收藏与设置保留。
+3. 1.1.7 的 manifest 不再包含 `update_url`，之后 Firefox 会按 AMO 商店检查更新。
+
+其他仍在 1.1.5 / 1.1.6 的用户也需要各自手动安装一次 1.1.7，才会回到商店更新链路。
 
 ### 临时加载（开发）
 
@@ -75,18 +75,18 @@ extensions.webextensions.keepUuidOnUninstall = true
 
 ## 自动更新
 
-- 扩展在 `manifest.json` 里声明 `update_url`：
-  `https://raw.githubusercontent.com/nothingness0db/star/main/updates.json`。
-- Firefox 默认大约每 24 小时检查一次；`updates.json` 指向对应 GitHub Release 的签名 XPI，并带 SHA256 校验。
-- 手动检查：句子库右上角「设置 → 更新」→「检查更新」；发现新版本后点「应用更新并重载」。
-  Firefox 目前没有实现 `runtime.requestUpdateCheck()`，扩展会回退到 GitHub Releases API 查询；
-  若 Firefox 还没下载新版本，会给出「下载签名 XPI」按钮，也可以等待自动更新。
+- 1.1.7 起从 AMO 商店分发：`manifest.json` 不声明 `update_url`，由 Firefox 在 `about:addons` 中
+  按 AMO 商店检查更新，默认大约每 24 小时一次。
+- 也可以在 `about:addons` 点击扩展的齿轮菜单 →「检查更新」，或打开
+  [AMO 商店页面](https://addons.mozilla.org/firefox/addon/6657-star/) 查看最新版本。
 - 想更快验证自动更新，可在 `about:config` 把 `extensions.update.interval`（秒）改为 `120`，
-  重启 Firefox 后等待检查；更新清单或 XPI 下载、校验失败时，浏览器控制台会给出网络/校验错误。
+  重启 Firefox 后等待检查。
 - 自动更新不会静默替换正在运行的 XPI：Firefox 下载新版本后会触发更新可用事件，
-  在设置页点「应用更新并重载」即可生效（下次启动也会自动应用）。
+  下次启动时自动应用。
+- 仍在使用自托管 1.1.5 / 1.1.6 的用户不会自动回到商店更新，需要手动安装一次 1.1.7，
+  见上面的「从自托管 1.1.5 / 1.1.6 迁移」。
 
-> 现有 1.1.4 listed 用户不会自动迁移，见上面的「从 AMO listed 版本迁移」。
+> 设置面板只显示当前版本与 AMO 商店链接；「检查更新」统一交给 Firefox 的 `about:addons`。
 
 ## 首次使用
 
@@ -226,7 +226,7 @@ Firefox MV3 不会自动授予站点权限，所以默认**不会**在 6657 注�
 - **梗库自动更新**：默认开启，缓存超过 7 天时自动拉取；关闭后只在手动点「更新梗库」时联网，并显示缓存大小。
 - **站内增强**：沿用 6657 的授权/撤销流程，只作用于 sb6657.cn，站点改版可能失效。
 - **GitHub Gist 备份**：填写仅 gist scope 的 token 与 Gist ID，手动导出到 secret Gist 或从中恢复；token 只存本机。
-- **更新**：显示当前版本，可手动「检查更新」；发现新版本后点「应用更新并重载」。
+- **更新**：显示当前版本，并给出 AMO 商店页面；更新由 Firefox 在 `about:addons` 中检查。
 - **数据**：显示条目数、梗命中数、站点数与占用字节，可导出备份、导入、二次确认清空。
 
 ## 权限说明
@@ -258,8 +258,8 @@ lib/store.js     共享存储与导入导出模块
 lib/memes.js     梗库下载、编码解码、缓存与匹配
 lib/gist.js      GitHub Gist 手动备份/恢复、token 仅存 storage.local
 icons/           16/32/48/96 图标
-updates.json     Firefox 自托管更新清单，指向 GitHub Release 里的签名 XPI
-scripts/         发版辅助脚本（生成 updates.json，不打包进扩展）
+updates.json     1.1.5 / 1.1.6 自托管时期的旧更新清单，1.1.7 起不再更新
+scripts/         发版辅助脚本（不打包进扩展）
 ```
 
 ## 截图

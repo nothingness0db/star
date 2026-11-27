@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-11-28
+
+### Changed
+
+- 更新源从 GitHub 自托管切回 AMO **listed** 商店：移除 `manifest.json` 的
+  `browser_specific_settings.gecko.update_url`，之后由 Firefox 在 `about:addons` 中通过 AMO 检查更新。
+- 设置面板移除依赖 `update_url` 的「检查更新 / 应用更新 / 下载签名 XPI」按钮，改为静态说明与
+  AMO 商店页面链接，避免无 `update_url` 时出现坏按钮。
+- 发版流程改为打 `v*` tag 后用 AMO API 以 `listed` 渠道提交版本；不再做 unlisted 签名、不再生成
+  或提交 `updates.json`、不再把 GitHub Release 当更新源。API 提交失败时保留 unsigned zip 供手动上传。
+- 本次不带 WebDAV（1.2.0 / PR #3 保持不动）。
+
 ## [1.1.6] - 2026-11-27
 
 ### Changed
