@@ -4,7 +4,8 @@
       "updates": [
         {
           "version": "1.1.5",
-          "update_link": "https://github.com/nothingness0db/star/releases/download/v1.1.5/star-1.1.5.xpi"
+          "update_link": "https://github.com/nothingness0db/star/releases/download/v1.1.5/star-1.1.5.xpi",
+          "update_hash": "sha256:88519af359e75c8fd5e0792b38cc46e1074e0f28411f5bc7f6c88c0a779e3974"
         }
       ]
     }
