@@ -1,12 +1,12 @@
 {
   "name": "star",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "private": true,
   "description": "Firefox MV3 划词收藏扩展（零构建）",
   "scripts": {
-    "lint": "web-ext lint --source-dir .",
+    "lint": "web-ext lint --source-dir . --self-hosted",
     "build": "web-ext build --source-dir . --overwrite-dest --filename star.zip",
-    "sign": "web-ext sign --source-dir .",
+    "sign": "web-ext sign --source-dir . --channel unlisted",
     "check": "node --check background.js && node --check library.js && node --check lib/store.js && node --check lib/memes.js && node --check lib/gist.js && node --check content/sb6657.js"
   },
   "engines": {

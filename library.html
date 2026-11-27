@@ -212,6 +212,16 @@
       </div>
     </section>
     <section class="setting-block">
+      <h3>更新</h3>
+      <p>通过 GitHub Release 分发并自动更新。Firefox 默认约每 24 小时检查一次；也可以在这里手动检查。</p>
+      <p id="updateStatus" class="setting-status">状态：读取中…</p>
+      <div class="dialog-actions setting-actions">
+        <button id="checkUpdateBtn" class="btn" type="button">检查更新</button>
+        <button id="applyUpdateBtn" class="btn" type="button" hidden>应用更新并重载</button>
+        <button id="downloadUpdateBtn" class="btn" type="button" hidden>下载签名 XPI</button>
+      </div>
+    </section>
+    <section class="setting-block">
       <h3>数据</h3>
       <p id="dataStats" class="setting-status">统计中…</p>
       <div class="dialog-actions setting-actions">
