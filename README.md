@@ -19,10 +19,32 @@
 
 - 快捷键 `Alt+Shift+S` 收藏当前选中文字（可在 about:addons 修改）。
 - 条目标签、备注、置顶，以及站点/标签筛选与四种排序；筛选与置顶等状态持久化。
-- 设置面板：主题、保存反馈、梗库自动更新、站内授权、GitHub Gist 备份、数据统计、备份导入导出与清空。
+- 设置面板：主题、保存反馈、梗库自动更新、站内授权、GitHub Gist 备份、检查更新、数据统计、备份导入导出与清空。
 - 首次安装显示三步引导，关闭后不再自动弹出。
 
-## 安装（临时加载）
+## 安装
+
+正式安装使用 GitHub Release 里由 AMO 签名的 `.xpi`（自托管分发，不再向 AMO 商店 listed 渠道提交新版本）：
+
+1. 打开 [最新 Release](https://github.com/nothingness0db/star/releases/latest)，下载 `star-<版本>.xpi`。
+2. 在 Firefox 中打开 `about:addons` → 右上角齿轮 → 「从文件安装附加组件…」→ 选择下载的 `.xpi`。
+3. 工具栏出现橙色引号图标即安装完成；首次打开句子库会显示三步引导。
+
+> 扩展以 `star@nothingness0db` 的 **unlisted** 渠道签名。Firefox 正式版默认可安装 AMO 签名的扩展，
+> 不需要打开 `xpinstall.signatures.required`。
+
+### 从 AMO listed 版本迁移（1.1.4 及更早）
+
+1.1.4 是最后一个从 AMO 商店（listed）分发的版本。**AMO 商店安装的用户不会自动切到 GitHub 更新**，
+需要手动安装一次新版本：
+
+1. 先导出一份备份（句子库 → 导出备份），以防万一。
+2. 下载 Release 里 `1.1.5` 或更新的签名 `.xpi`，按上面的「从文件安装」覆盖安装；
+   同一个 ID 会直接升级，`storage.local` 里的收藏与设置保留。
+3. 之后自动更新走 GitHub 上的 `updates.json`，不再依赖 AMO 商店版本。
+4. AMO 商店页面不会删除；是否停用旧 listed 条目由维护者手动决定。
+
+### 临时加载（开发）
 
 1. 在 Firefox 地址栏打开 `about:debugging`。
 2. 左侧选择「**此 Firefox**」。
@@ -32,7 +54,7 @@
 > 临时载入的扩展在关闭 Firefox 后会失效，重新打开后按上面步骤再载入一次即可。
 > 但要注意：**临时附加组件被卸载时，Firefox 默认会一并清掉它的 `storage.local` 数据**
 > （重启浏览器、或在 about:debugging 点「重新载入」都算一次卸载）。如果希望收藏跨重启保留，
-> 请按下面「让数据跨重启保留」处理，或直接永久安装。
+> 请按下面「让数据跨重启保留」处理，或直接按上面的「安装」永久安装签名 XPI。
 
 清单里的 `data_collection_permissions` 是 AMO 要求的字段（Firefox 140 起支持），
 扩展本身声明为不收集任何数据。`optional_host_permissions` 需要 Firefox 128 起支持，
@@ -48,15 +70,23 @@ extensions.webextensions.keepUuidOnUninstall = true
 ```
 
 这是 Mozilla 官方用于测试重启行为的做法，设置后即使关闭浏览器或用「重新载入」更新扩展，
-句子库的数据也会保留。日常长期使用更推荐永久安装：
+句子库的数据也会保留。日常长期使用请直接按上面的「安装」永久安装签名 XPI；
+永久安装的扩展及其 `storage.local` 会随浏览器重启正常保留。
 
-1. 把本目录内容打包成 zip（`manifest.json` 位于压缩包根目录），改后缀为 `.xpi`；
-2. 在 Firefox Developer Edition 或 Nightly 的 `about:config` 中把
-   `xpinstall.signatures.required` 设为 `false`（正式版 Firefox 会忽略该设置）；
-3. 打开 `about:addons` → 齿轮菜单 → 「从文件安装附加组件…」→ 选择 `.xpi`。
+## 自动更新
 
-也可以使用 `web-ext sign` 通过 AMO 签名后安装。永久安装的扩展及其 `storage.local`
-会随浏览器重启正常保留。
+- 扩展在 `manifest.json` 里声明 `update_url`：
+  `https://raw.githubusercontent.com/nothingness0db/star/main/updates.json`。
+- Firefox 默认大约每 24 小时检查一次；`updates.json` 指向对应 GitHub Release 的签名 XPI，并带 SHA256 校验。
+- 手动检查：句子库右上角「设置 → 更新」→「检查更新」；发现新版本后点「应用更新并重载」。
+  Firefox 目前没有实现 `runtime.requestUpdateCheck()`，扩展会回退到 GitHub Releases API 查询；
+  若 Firefox 还没下载新版本，会给出「下载签名 XPI」按钮，也可以等待自动更新。
+- 想更快验证自动更新，可在 `about:config` 把 `extensions.update.interval`（秒）改为 `120`，
+  重启 Firefox 后等待检查；更新清单或 XPI 下载、校验失败时，浏览器控制台会给出网络/校验错误。
+- 自动更新不会静默替换正在运行的 XPI：Firefox 下载新版本后会触发更新可用事件，
+  在设置页点「应用更新并重载」即可生效（下次启动也会自动应用）。
+
+> 现有 1.1.4 listed 用户不会自动迁移，见上面的「从 AMO listed 版本迁移」。
 
 ## 首次使用
 
@@ -196,6 +226,7 @@ Firefox MV3 不会自动授予站点权限，所以默认**不会**在 6657 注�
 - **梗库自动更新**：默认开启，缓存超过 7 天时自动拉取；关闭后只在手动点「更新梗库」时联网，并显示缓存大小。
 - **站内增强**：沿用 6657 的授权/撤销流程，只作用于 sb6657.cn，站点改版可能失效。
 - **GitHub Gist 备份**：填写仅 gist scope 的 token 与 Gist ID，手动导出到 secret Gist 或从中恢复；token 只存本机。
+- **更新**：显示当前版本，可手动「检查更新」；发现新版本后点「应用更新并重载」。
 - **数据**：显示条目数、梗命中数、站点数与占用字节，可导出备份、导入、二次确认清空。
 
 ## 权限说明
@@ -227,6 +258,8 @@ lib/store.js     共享存储与导入导出模块
 lib/memes.js     梗库下载、编码解码、缓存与匹配
 lib/gist.js      GitHub Gist 手动备份/恢复、token 仅存 storage.local
 icons/           16/32/48/96 图标
+updates.json     Firefox 自托管更新清单，指向 GitHub Release 里的签名 XPI
+scripts/         发版辅助脚本（生成 updates.json，不打包进扩展）
 ```
 
 ## 截图
@@ -265,4 +298,4 @@ icons/           16/32/48/96 图标
 或热度数字重叠；星标中心 x 在同一列表内应保持一致（`/lifecycle` 的四个阶段面板
 各有一条竖线）。
 
-签名、上架与自动发版流程见 [docs/publishing.md](docs/publishing.md)；参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+签名、自托管发版与自动更新流程见 [docs/publishing.md](docs/publishing.md)；参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。

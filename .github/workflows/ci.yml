@@ -28,7 +28,7 @@ jobs:
       - name: Lint extension (errors fail, warnings printed)
         run: |
           set -o pipefail
-          web-ext lint --source-dir . --output json --pretty > /tmp/web-ext-lint.json
+          web-ext lint --source-dir . --self-hosted --output json --pretty > /tmp/web-ext-lint.json
           python3 - <<'PY'
           import json, sys
           with open("/tmp/web-ext-lint.json", encoding="utf-8") as f:
@@ -66,6 +66,33 @@ jobs:
               )
               sys.exit(1)
           print(f"manifest.json OK, version {manifest['version']}")
+          PY
+
+      - name: Validate self-hosted update config
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          with open("manifest.json", encoding="utf-8") as f:
+              manifest = json.load(f)
+          gecko = manifest.get("browser_specific_settings", {}).get("gecko", {})
+          expected = "https://raw.githubusercontent.com/nothingness0db/star/main/updates.json"
+          if gecko.get("update_url") != expected:
+              print(
+                  f"manifest update_url mismatch: {gecko.get('update_url')!r}, expected {expected!r}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          with open("updates.json", encoding="utf-8") as f:
+              updates = json.load(f)
+          addon = updates.get("addons", {}).get(gecko.get("id"))
+          if not addon or not isinstance(addon.get("updates"), list) or not addon["updates"]:
+              print("updates.json is missing addons.<id>.updates", file=sys.stderr)
+              sys.exit(1)
+          latest = addon["updates"][-1]
+          if not latest.get("version") or not latest.get("update_link"):
+              print("updates.json entry needs version and update_link", file=sys.stderr)
+              sys.exit(1)
+          print(f"updates.json OK: {gecko['id']} -> {latest['version']}")
           PY
 
 

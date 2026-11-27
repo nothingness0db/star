@@ -1,81 +1,152 @@
-# 发布到 AMO 与自动签名发版
+# 自托管分发与发版
 
-本仓库用 GitHub Actions 在打 tag 时自动 build、用 AMO API 签名，并创建 GitHub Release。
-源码是零构建的 Firefox MV3 扩展；不需要 npm 依赖，CI 只全局安装 `web-ext`。
+本扩展从 1.1.5 起改为自托管分发：打 `v*` tag 时，GitHub Actions 用 AMO API 以 **unlisted** 渠道签名，
+把签名 XPI 上传 GitHub Release，并把 `updates.json` 提交回 `main`。Firefox 通过
+`manifest.json` 里的 `update_url` 读取该清单，从 GitHub 自动更新。
 
-## 1. 获取 AMO API keys
+源码仍是零构建的 Firefox MV3 扩展：没有 npm 依赖，CI 只全局安装 `web-ext`。
 
-1. 登录 [addons.mozilla.org](https://addons.mozilla.org/)（AMO），进入「Tools → Manage My Add-ons → Developer Hub」。
+## 1. 分发方式
+
+- 固定使用 ID `star@nothingness0db`，不再向 AMO 的 **listed** 渠道提交新版本。
+- 每次发版都用同一 ID 的 **unlisted** 渠道签名；AMO 文档说明同一 add-on 可以同时有 listed 与
+  unlisted 版本，API 提交时由 `channel` 字段决定。
+- 不删除 AMO 上已有的 1.1.4 listed 条目：删除会软屏蔽所有版本。是否停用由维护者之后手动决定。
+- 现有从 AMO 商店安装的 1.1.4 用户**不会**自动迁移到 GitHub 更新，需按 README 手动覆盖安装一次；
+  之后才会走 `update_url`。
+
+> 如果 AMO 拒绝同一 ID 的 unlisted 签名，停止并发报告，不要擅自换成旧 ID
+> `star-public@nothingness0db` 或新 ID。
+
+## 2. 一次性配置 AMO API keys
+
+1. 登录 [addons.mozilla.org](https://addons.mozilla.org/)（AMO），进入
+   「Tools → Manage My Add-ons → Developer Hub」。
 2. 在账号资料页（[AMO API keys](https://addons.mozilla.org/en-US/developers/addon/api/key/)）生成一组 API key：
-   - **JWT issuer** → 对应本仓库的 Secret `AMO_JWT_ISSUER`
-   - **JWT secret** → 对应本仓库的 Secret `AMO_JWT_SECRET`
-3. 在 GitHub 仓库 **Settings → Secrets and variables → Actions → New repository secret** 分别添加上面两项。
-   Secret 一旦保存就无法在页面查看，只能改；不要写进代码、issue、PR 或日志。
+   - **JWT issuer** → 仓库 Secret `AMO_JWT_ISSUER`
+   - **JWT secret** → 仓库 Secret `AMO_JWT_SECRET`
+3. 在 GitHub 仓库 **Settings → Secrets and variables → Actions → New repository secret** 分别添加。
+   Secret 保存后无法在页面查看，只能改；不要写进代码、issue、PR 或日志。
 
-> 如果漏配，release workflow 会在「Check AMO API keys」步明确失败并输出
-> 「请在 Settings → Secrets 配置 AMO API keys（AMO_JWT_ISSUER、AMO_JWT_SECRET）。」，不会静默成功。
+> 漏配时 release workflow 会在「Check AMO API keys」步明确失败并输出
+> 「请在 Settings → Secrets and variables → Actions 配置 AMO API keys（AMO_JWT_ISSUER、AMO_JWT_SECRET）。」，
+> 不会静默成功。签名失败同样会让 job 失败，不会产出假成功。
 
-## 2. listed 与 unlisted
+## 3. 发版
 
-| 频道 | 含义 | 审核 | 适用场景 |
-| --- | --- | --- | --- |
-| `unlisted`（默认） | 签名但不在 AMO 列表展示；可通过直链下载 | 通常自动、几分钟内 | 自用、内测、CI 打 tag 后立刻拿到 xpi |
-| `listed` | 上架 AMO 搜索与列表 | **需要人工审核**，可能数天甚至更久 | 正式公开发布 |
+1. 同步修改 `manifest.json`、`package.json` 的 `version`（例如 `1.1.5`），并在 `CHANGELOG.md`
+   里把 `Unreleased` 内容移到新版本段。
+2. 本地校验：
 
-首次 listed 上架还需在 Developer Hub 补齐人工资料，例如：扩展详细说明、隐私政策/数据收集声明、
-分类与标签、支持网址、源码地址、图标/截图、以及审核问卷。本扩展在 `manifest.json` 中声明
-`data_collection_permissions.required = ["none"]`，审核时如实说明「不收集数据」即可。
-审核周期不可控：listed 频道下 Release 的 `.xpi` 可能延迟出现或尚未签名；急用请选 `unlisted`。
+   ```sh
+   npm i -g web-ext
+   npm run lint
+   npm run check
+   npm run build
+   ```
 
-## 3. 触发发版
+3. 提交后打 tag 并推送：
 
-### 方式 A：打 tag（自动，unlisted）
+   ```sh
+   git tag v1.1.5
+   git push origin v1.1.5
+   ```
 
-```sh
-# 先把 manifest.json 与 package.json 的 version 改成同一个版本号，再：
-git tag v1.1.0
-git push origin v1.1.0
-```
+   tag 必须形如 `v*`；`v` 后面的部分要与 `manifest.json` 和 `package.json` 的 `version` 完全一致，
+   否则 workflow 会报错并指出三者的值。
 
-tag 必须形如 `v*`；`v` 后面的部分要与 `manifest.json` 和 `package.json` 的 `version` 完全一致，
-否则 workflow 会报错并指出三者的值。
-
-### 方式 B：手动触发（可选 listed）
-
-GitHub 仓库 **Actions → Release → Run workflow**，选择分支，并在 `channel` 输入里选 `listed` 或 `unlisted`。
-手动触发不校验 tag 版本，但仍需要两个 secrets。若想用 listed 频道并且带 tag，同样先 push tag，再在 Actions 里选 listed 重跑。
+4. `.github/workflows/release.yml` 自动完成剩余工作，不需要手动点 workflow。
 
 ## 4. 流水线做了什么
 
-1. checkout → setup-node（Node 20，npm cache）→ `npm i -g web-ext`。
-2. 校验 tag 版本 == `manifest.version` == `package.json.version`。
-3. `web-ext build --source-dir . --overwrite-dest` 生成未签名 zip。
-4. `web-ext sign --source-dir . --channel <channel> --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"`。
-5. 在 `web-ext-artifacts/` 生成 `SHA256SUMS.txt`。
-6. `softprops/action-gh-release` 创建/更新 Release，附上 zip、xpi（若产生）与校验文件；正文含版本、安装说明和 listed 人工审核提醒。
+1. checkout（含完整历史）→ setup-node（Node 20，npm cache）→ `npm i -g web-ext`。
+2. **Check AMO API keys**：两个 Secret 任一缺失即失败并给出明确提示。
+3. **Validate tag version**：`vX.Y.Z` == `manifest.version` == `package.json.version`。
+4. **Build unsigned zip**：`web-ext build`，用于确认源码能正常打包。
+5. **Sign with AMO (unlisted)**：
+   `web-ext sign --channel unlisted --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"`；
+   签名失败或没有产出 `.xpi` 时 job 失败。
+6. 把签名产物重命名为固定资产名 `star-<version>.xpi`，生成 `SHA256SUMS.txt` 并自检。
+7. `softprops/action-gh-release` 创建/更新该 tag 的 Release，附上签名 XPI 与校验和。
+8. 运行 `scripts/write-updates.mjs` 计算 XPI 的 SHA256，生成 `updates.json`，提交到 `main`，
+   提交信息为 `chore: update updates.json for v<version> [skip ci]`。
 
-## 5. 安装与校验
+更新清单格式（`main` 分支根目录的 `updates.json`）：
 
-下载 Release 里的已签名 `.xpi`，在 Firefox 中打开 `about:addons` → 齿轮菜单 → 「从文件安装附加组件…」选择它。
-校验完整性：下载 `SHA256SUMS.txt` 与 xpi/zip 放同一目录，运行 `sha256sum -c SHA256SUMS.txt`。
-未签名 zip 可用于检查源码或在 `about:debugging` 里临时载入 `manifest.json`。
+```json
+{
+  "addons": {
+    "star@nothingness0db": {
+      "updates": [
+        {
+          "version": "1.1.5",
+          "update_link": "https://github.com/nothingness0db/star/releases/download/v1.1.5/star-1.1.5.xpi",
+          "update_hash": "sha256:…"
+        }
+      ]
+    }
+  }
+}
+```
 
-## 6. 排错
+`update_link` 固定指向对应 tag 的 Release 资产；`update_hash` 由 CI 对签名后的 XPI 计算，不要手填。
+清单只保留最新版本；Firefox 会把任何更旧的已安装版本升级到该版本。
+
+> 仓库里预置的 `updates.json` 是首次发版前的引导版本：结构完整但不含 `update_hash`。
+> 第一次打 tag 时，release workflow 会覆盖它并写入签名 XPI 的真实 SHA256。
+
+## 5. 自动更新与手动检查
+
+- `manifest.json` 声明：
+
+  ```json
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "star@nothingness0db",
+      "update_url": "https://raw.githubusercontent.com/nothingness0db/star/main/updates.json"
+    }
+  }
+  ```
+
+- Firefox 默认约每 24 小时检查一次更新，下载后由浏览器应用。
+- 扩展「设置 → 更新」提供「检查更新」：优先调用 `runtime.requestUpdateCheck()`（如果浏览器实现）；
+  由于 Firefox 目前尚未实现该 API，会回退到 GitHub Releases API 查询最新 Release。状态分为
+  检查中 / 已是最新 / 发现更新 / 失败；发现更新后：
+  - 如果 Firefox 已下载更新（`runtime.onUpdateAvailable`），显示「应用更新并重载」，调用 `runtime.reload()`；
+  - 如果只是手动查到新版本、Firefox 还没下载，显示「下载签名 XPI」按钮，也可以等待自动更新。
+  不尝试静默替换 XPI。
+- 验证时可把 `about:config` 的 `extensions.update.interval`（秒）临时改为 `120`，重启 Firefox 观察。
+
+## 6. 安装与校验
+
+下载 Release 里的签名 `star-<version>.xpi`，在 Firefox 中打开 `about:addons` → 齿轮菜单 →
+「从文件安装附加组件…」选择它。不需要关闭签名校验。
+
+校验完整性：下载 `SHA256SUMS.txt` 与 XPI 放同一目录，运行：
+
+```sh
+sha256sum -c SHA256SUMS.txt
+```
+
+未签名 zip 只用于检查源码或在 `about:debugging` 里临时载入，不要当作安装包分发。
+
+## 7. 排错
 
 | 现象 | 原因 / 处理 |
 | --- | --- |
-| 「请在 Settings → Secrets 配置 AMO API keys」 | 两个 Secret 没配或名字拼错；到 Settings → Secrets 重新添加。 |
+| 「请在 Settings → Secrets 配置 AMO API keys」 | 两个 Secret 没配或名字拼错；到 Settings → Secrets and variables → Actions 重新添加。 |
 | tag 版本不匹配 | 改 `manifest.json` 与 `package.json` 的 `version` 到 tag 号，再重新打 tag（`git tag -f` + `git push -f`）。 |
-| `web-ext lint` 有 error | 按报错改 manifest / 代码；warning（如 Firefox Android 最低版本提示）不阻塞。 |
-| 签名失败 / 401 / 403 | API key 或 secret 错误、过期，或 AMO 账号权限不足；重新生成 Secret。 |
-| 一直等不到 xpi（listed） | 人工审核排队，属正常现象；改用 unlisted 或等待审核。 |
-| 版本已存在 | AMO 不允许重复版本号；递增 `version` 并重新打 tag。 |
+| AMO unlisted 签名失败 / 401 / 403 | API key 或 secret 错误、过期，或 AMO 不接受该 ID 的 unlisted 渠道；先核对 Secret，仍失败就停止并报告，不要换 ID。 |
+| 签名成功但没有 `.xpi` | 查看 `web-ext sign` 输出与 `web-ext-artifacts/`；workflow 会明确失败。 |
+| 版本已存在 | AMO 不允许重复版本号；递增 `manifest` / `package` 的 `version` 并重新打 tag。 |
+| Release 没更新 | 同一 tag 重跑失败的 job 即可；`softprops/action-gh-release` 会更新现有 Release。 |
+| Firefox 不检查更新 | 1.1.4 及更早的 listed 版本没有 `update_url`，需手动安装一次新 XPI；之后确认 `about:config` 的 `extensions.update.interval`，并检查 `updates.json` 可访问、哈希与 XPI 一致。 |
+| `updates.json` 提交失败 | 检查 workflow 是否有 `contents: write` 权限、`main` 是否被保护；必要时手动把 CI 生成的 `updates.json` 提交到 main。 |
 
-本地想先试一遍（需要自己提供 key/secret 环境变量，别提交它们）：
+本地只跑 lint / build（真实签名需要 AMO 凭据，且本仓库约定不在本地签名）：
 
 ```sh
 npm i -g web-ext
-web-ext lint --source-dir .
+web-ext lint --source-dir . --self-hosted
 web-ext build --source-dir . --overwrite-dest
-web-ext sign --source-dir . --channel unlisted --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
 ```

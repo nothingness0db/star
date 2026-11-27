@@ -5,20 +5,32 @@
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-11-27
+
+### Changed
+
+- 分发方式改为自托管：打 `v*` tag 时，GitHub Actions 用 AMO **unlisted** 渠道签名，把签名 XPI 与
+  `SHA256SUMS.txt` 上传到 GitHub Release，不再向 AMO listed 渠道提交新版本。
+- `manifest.json` 增加 `update_url`，指向 `https://raw.githubusercontent.com/nothingness0db/star/main/updates.json`；
+  Firefox 通过 GitHub Release 自动更新，发版时由 CI 生成 `updates.json`（含 `update_hash`）并提交到 main。
+- 设置面板新增「更新」：显示当前版本、手动「检查更新」，发现新版本后可「应用更新并重载」。
+- `web-ext` 打包排除 `updates.json`、`docs/`、`scripts/`、`README.md` 与 AMO 上传缓存 `.amo-upload-uuid`。
+- 文档改为自托管安装、迁移与发版说明。现有 AMO listed 1.1.4 用户需手动覆盖安装一次 1.1.5 签名 XPI，
+  之后由 GitHub 更新；AMO listed 条目保留，是否停用由维护者手动决定。
+
 ### Added
 
-- 快捷键 Alt+Shift+S、标签/备注/置顶、排序与筛选、设置面板、首次安装引导。
-
-- CI：push(main) 与 PR 时跑 `web-ext lint`、`node --check`、manifest 版本一致性校验与 `web-ext build`，上传构建产物（保留 7 天）。
-- 发版流水线：打 `v*` tag 自动 build 未签名 zip、生成 `SHA256SUMS.txt` 并创建 GitHub Release（上架后不再由 CI 向 AMO 签名）。
+- CI：push(main) 与 PR 时跑 `web-ext lint`、`node --check`、manifest 版本一致性校验与 `web-ext build`，
+  上传构建产物（保留 7 天）。
 - 开源常用文件：CONTRIBUTING、issue/PR 模板、发布文档、编辑器与 Git 配置、badges。
 
 ## [1.1.4] - 2026-11-25
 
 ### Changed
 
-- 以新 ID \`star@nothingness0db\` 在 AMO 上架（listed 渠道）。旧 ID \`star-public@nothingness0db\` 已被自己分发（unlisted）条目占用，AMO 的渠道在提交时即固定、不可切换。
-- 发版流水线改为只产出未签名构建产物：listed 条目无法再用其他渠道签名，发布与更新统一在 AMO Developer Hub 完成。
+- 以新 ID \`star@nothingness0db\` 在 AMO 上架（listed 渠道）。旧 ID \`star-public@nothingness0db\` 已被
+  自己分发（unlisted）的条目占用，AMO 的渠道在提交时即固定、不可切换。
+- 这是最后一个从 AMO listed 渠道分发的版本；1.1.5 起改为自托管（unlisted 签名 + GitHub Release）。
 
 ## [1.1.0] - 2026-11-19
 
