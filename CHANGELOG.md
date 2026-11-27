@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-11-27
+
+### Changed
+
+- 自托管更新测试（无功能变更）：验证 1.1.5 安装后的 GitHub Release + `updates.json` 自动更新链路。
+
 ## [1.1.5] - 2026-11-27
 
 ### Changed
