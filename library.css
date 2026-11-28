@@ -422,6 +422,10 @@ html[data-theme="dark"] .brand-mark .mark-dark {
 
 .settings-dialog {
   width: min(520px, calc(100vw - 36px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .setting-block {
