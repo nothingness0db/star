@@ -129,4 +129,7 @@ npm run build : pass，web-ext-artifacts/star.zip
 
 ## 7. PR
 
-- 分支：`eta/task-113`，PR 链接见任务报告（不 merge、不 tag）。
+- 分支：`eta/task-113`
+- PR：<https://github.com/nothingness0db/star/pull/7>
+- CI：`lint-and-build` 通过（2026-11-29）
+- 未 merge、未 tag、未修改发布版本号。
