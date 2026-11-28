@@ -5,13 +5,14 @@
 //
 // 只负责上传与提交。提交成功后立即返回；listed 渠道通常还需要 AMO 人工审核，
 // 因此 pending review 是正常状态，不等待审核完成。
-import { createHmac, randomUUID } from "node:crypto";
 import { appendFile, readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { makeJwt } from "./amo-jwt.mjs";
 
 const API_ROOT = "https://addons.mozilla.org/api/v5";
 const DEFAULT_ADDON_ID = "star@nothingness0db";
 const DEFAULT_ADDON_SLUG = "6657-star";
+const REQUEST_TIMEOUT_MS = 60 * 1000;
 const VALIDATION_TIMEOUT_MS = 7 * 60 * 1000;
 const VALIDATION_INTERVAL_MS = 5 * 1000;
 const STATUS_POLLS = 6;
@@ -45,18 +46,6 @@ function sleep(ms) {
   });
 }
 
-function makeJwt(issuer, secret) {
-  const header = { alg: "HS256", typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
-  const payload = { iss: issuer, jti: randomUUID(), iat: now, exp: now + 300 };
-  const encode = function (value) {
-    return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-  };
-  const signingInput = `${encode(header)}.${encode(payload)}`;
-  const signature = createHmac("sha256", secret).update(signingInput).digest("base64url");
-  return `${signingInput}.${signature}`;
-}
-
 function describeResponse(response, text) {
   return `HTTP ${response.status} ${response.statusText}: ${String(text || "").slice(0, 2000)}`;
 }
@@ -79,15 +68,27 @@ if (!issuer || !secret) {
   fail("缺少 AMO_JWT_ISSUER / AMO_JWT_SECRET");
 }
 
-const token = makeJwt(issuer, secret);
 const apiBase = String(options["api-root"] || API_ROOT).replace(/\/+$/, "");
 
 async function api(path, init) {
   const request = init || {};
+  // 每次请求都重新签发 JWT：上传校验最多等 7 分钟，而 AMO token 只有 5 分钟，
+  // 复用同一个 token 会在校验较慢时让后续创建版本/查询状态请求 401。
   const headers = Object.assign({}, request.headers, {
-    Authorization: `JWT ${token}`
+    Authorization: `JWT ${makeJwt(issuer, secret)}`
   });
-  const response = await fetch(`${apiBase}/${path.replace(/^\/+/, "")}`, Object.assign({}, request, { headers }));
+  let response;
+  try {
+    response = await fetch(`${apiBase}/${path.replace(/^\/+/, "")}`, Object.assign({}, request, {
+      headers,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    }));
+  } catch (error) {
+    const reason = error && error.name === "TimeoutError"
+      ? `请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`
+      : String((error && error.message) || error);
+    throw new Error(`AMO 请求失败（${path}）：${reason}`);
+  }
   const text = await response.text();
   let data = null;
   if (text) {
