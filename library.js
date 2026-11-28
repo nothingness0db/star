@@ -76,6 +76,7 @@
   let sortValue = "new";
   let settings = null;
   let webdavConfig = null;
+  let webdavBusy = false;
   const FILTER_KEY = "filters";
   const VIEW_KEY = "welcomeViewed";
   let toastTimer = null;
@@ -792,6 +793,26 @@
     return (result && result.error) || "未知错误";
   }
 
+  // WebDAV 保存/同步/恢复/清凭据共用一个忙碌锁：避免双击或并发请求互相覆盖状态。
+  function setWebdavBusy(busy) {
+    webdavBusy = busy;
+    [webdavSaveBtn, webdavSyncBtn, webdavRestoreBtn, webdavClearBtn].forEach(function (button) {
+      button.disabled = busy;
+    });
+  }
+
+  function guardWebdav(handler) {
+    return async function (event) {
+      if (webdavBusy) return;
+      setWebdavBusy(true);
+      try {
+        return await handler(event);
+      } finally {
+        setWebdavBusy(false);
+      }
+    };
+  }
+
   // ---- 设置：更新（AMO 商店版） ----
   function currentVersion() {
     try {
@@ -897,7 +918,7 @@
     }
   });
 
-  webdavSaveBtn.addEventListener("click", async function () {
+  webdavSaveBtn.addEventListener("click", guardWebdav(async function () {
     const rawUrl = webdavUrl.value.trim() || WEBDAV_DEFAULT_URL;
     const pattern = webdavOriginPattern(rawUrl);
     if (!pattern) {
@@ -936,9 +957,9 @@
     } catch (error) {
       webdavStatus.textContent = "状态：保存失败";
     }
-  });
+  }));
 
-  webdavSyncBtn.addEventListener("click", async function () {
+  webdavSyncBtn.addEventListener("click", guardWebdav(async function () {
     if (!webdavConfig || !webdavConfig.username || !webdavConfig.hasPassword) {
       webdavStatus.textContent = "状态：请先保存 WebDAV 账号和应用密码";
       return;
@@ -974,9 +995,9 @@
     } catch (error) {
       webdavStatus.textContent = "状态：同步失败";
     }
-  });
+  }));
 
-  webdavRestoreBtn.addEventListener("click", async function () {
+  webdavRestoreBtn.addEventListener("click", guardWebdav(async function () {
     if (!webdavConfig || !webdavConfig.username || !webdavConfig.hasPassword) {
       webdavStatus.textContent = "状态：请先保存 WebDAV 账号和应用密码";
       return;
@@ -1013,9 +1034,9 @@
     } catch (error) {
       webdavStatus.textContent = "状态：恢复失败";
     }
-  });
+  }));
 
-  webdavClearBtn.addEventListener("click", async function () {
+  webdavClearBtn.addEventListener("click", guardWebdav(async function () {
     webdavStatus.textContent = "状态：清除中…";
     try {
       const result = await browser.runtime.sendMessage({ type: "webdavClearCredentials" });
@@ -1029,7 +1050,7 @@
     } catch (error) {
       webdavStatus.textContent = "状态：清除失败";
     }
-  });
+  }));
 
   exportBackupBtn.addEventListener("click", function () {
     exportJsonBtn.click();

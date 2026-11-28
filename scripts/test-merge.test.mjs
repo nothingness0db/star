@@ -304,6 +304,104 @@ test("不删除：本地有远端没有的保留，远端有本地没有的新�
   assert.equal(result.total, 3);
 });
 
+test("同 id：远端较新但标题/网址为空时保留本地来源信息", async function () {
+  reset();
+  await seed([makeEntry("same", {
+    text: "本地正文",
+    title: "本地标题",
+    url: "https://example.com/local",
+    updatedAt: 1000
+  })]);
+  const result = await store.mergeFromRemote(payload([makeEntry("same", {
+    text: "远端新正文",
+    title: "",
+    url: "",
+    updatedAt: 2000
+  })]));
+  const entry = (await store.getAll())[0];
+  assert.equal(entry.text, "远端新正文");
+  assert.equal(entry.title, "本地标题");
+  assert.equal(entry.url, "https://example.com/local");
+  assert.equal(entry.updatedAt, 2000);
+  assert.equal(result.updated, 1);
+});
+
+test("远端缺时间戳：稳定回退为 0，重复合并不产生 updatedAt 漂移", async function () {
+  reset();
+  await seed([]);
+  const remote = payload([{
+    id: "missing-time",
+    text: "没有时间戳的远端条目",
+    title: "标题",
+    url: "https://example.com/missing-time",
+    tags: ["远端"]
+  }]);
+  const first = await store.mergeFromRemote(remote);
+  assert.equal(first.added, 1);
+  const stored = (await storedEntries())[0];
+  assert.equal(stored.createdAt, 0);
+  assert.equal(stored.updatedAt, 0);
+  const before = JSON.stringify(await storedEntries());
+  const second = await store.mergeFromRemote(remote);
+  assert.deepEqual(
+    { added: second.added, updated: second.updated, filled: second.filled },
+    { added: 0, updated: 0, filled: 0 }
+  );
+  assert.equal(JSON.stringify(await storedEntries()), before);
+});
+
+test("远端 updatedAt 无效时不会伪装成最新，保留本地正文/标题/网址", async function () {
+  reset();
+  await seed([makeEntry("same", {
+    text: "本地正文",
+    title: "本地标题",
+    url: "https://example.com/local",
+    updatedAt: 5000
+  })]);
+  const result = await store.mergeFromRemote(payload([{
+    id: "same",
+    text: "远端正文",
+    title: "",
+    url: "",
+    createdAt: 1000,
+    updatedAt: "not-a-timestamp",
+    tags: []
+  }]));
+  const entry = (await store.getAll())[0];
+  assert.equal(entry.text, "本地正文");
+  assert.equal(entry.title, "本地标题");
+  assert.equal(entry.url, "https://example.com/local");
+  assert.equal(entry.updatedAt, 5000);
+  assert.equal(result.updated, 0);
+});
+
+test("远端内部重复 fingerprint：只新增一条并合并标签", async function () {
+  reset();
+  await seed([]);
+  const result = await store.mergeFromRemote(payload([
+    makeEntry("remote-a", {
+      text: "同一句",
+      url: "https://example.com/same",
+      tags: ["甲"],
+      updatedAt: 1000
+    }),
+    makeEntry("remote-b", {
+      text: "同一句",
+      url: "https://example.com/same",
+      tags: ["乙"],
+      note: "补全备注",
+      updatedAt: 2000
+    })
+  ]));
+  const entries = await store.getAll();
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].id, "remote-a");
+  assert.deepEqual(entries[0].tags, ["甲", "乙"]);
+  assert.equal(entries[0].note, "补全备注");
+  assert.equal(result.added, 1);
+  assert.equal(result.filled, 1);
+});
+
 test("add/update/restore 会刷新 updatedAt", async function () {
   reset();
   const before = Date.now();

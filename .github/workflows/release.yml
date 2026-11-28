@@ -37,6 +37,9 @@ jobs:
       - name: Install web-ext
         run: npm i -g web-ext
 
+      - name: Run unit tests
+        run: npm test
+
       - name: Check AMO API keys
         run: |
           missing=0
@@ -106,6 +109,18 @@ jobs:
               sys.exit(1)
           if "update_url" in gecko:
               print("built manifest still contains update_url", file=sys.stderr)
+              sys.exit(1)
+          required = [
+              "manifest.json",
+              "background.js",
+              "library.html",
+              "library.js",
+              "library.css",
+              "lib/webdav.js",
+          ]
+          missing = [name for name in required if name not in names]
+          if missing:
+              print(f"build is missing required files: {missing}", file=sys.stderr)
               sys.exit(1)
           forbidden = [
               name for name in names

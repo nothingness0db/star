@@ -92,6 +92,20 @@ jobs:
                   file=sys.stderr,
               )
               sys.exit(1)
+          optional = manifest.get("optional_host_permissions", [])
+          if "https://*/*" not in optional:
+              print(
+                  "optional_host_permissions must keep https://*/* so WebDAV origins can be requested",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          background_scripts = manifest.get("background", {}).get("scripts", [])
+          if "lib/webdav.js" not in background_scripts:
+              print(
+                  "background.scripts must include lib/webdav.js for WebDAV backup",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
           print(f"AMO listed config OK: {gecko.get('id')} v{manifest['version']} (no update_url)")
           PY
 
