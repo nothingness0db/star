@@ -212,6 +212,30 @@
       </div>
     </section>
     <section class="setting-block">
+      <h3>WebDAV 备份（坚果云）</h3>
+      <p>先读取远端备份并与本地按 id、正文+网址合并，保存本地后再把合并结果写回远端，<strong>不会用本地覆盖远端</strong>。只做手动同步；删除不会同步，需要两边都删，否则下次合并会恢复。</p>
+      <label class="field-row">服务器 URL
+        <input id="webdavUrl" type="url" placeholder="https://dav.jianguoyun.com/dav/" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field-row">账号
+        <input id="webdavUser" type="text" placeholder="坚果云账号（邮箱）" autocomplete="username" spellcheck="false">
+      </label>
+      <label class="field-row">应用密码
+        <input id="webdavPassword" type="password" placeholder="第三方应用密码（留空则不修改）" autocomplete="new-password">
+      </label>
+      <label class="field-row">远程路径
+        <input id="webdavPath" type="text" placeholder="6657star/star-backup.json" autocomplete="off" spellcheck="false">
+      </label>
+      <p>坚果云请使用「第三方应用密码」，不是登录密码。账号与应用密码只保存在本机 <code>storage.local</code> 的独立键里，不写入设置、导出备份、Gist 备份或日志。仅支持 HTTPS WebDAV。</p>
+      <p id="webdavStatus" class="setting-status">状态：读取中…</p>
+      <div class="dialog-actions setting-actions">
+        <button id="webdavSaveBtn" class="btn" type="button">保存配置</button>
+        <button id="webdavSyncBtn" class="btn" type="button">合并并备份</button>
+        <button id="webdavRestoreBtn" class="btn" type="button">从 WebDAV 合并恢复</button>
+        <button id="webdavClearBtn" class="btn danger" type="button">清除凭据</button>
+      </div>
+    </section>
+    <section class="setting-block">
       <h3>更新</h3>
       <p>商店版由 Firefox 在 <code>about:addons</code> 中自动检查更新，默认约每 24 小时一次。</p>
       <p id="updateStatus" class="setting-status">当前版本：读取中…</p>
