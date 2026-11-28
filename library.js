@@ -53,9 +53,20 @@
   const gistSaveBtn = document.getElementById("gistSaveBtn");
   const gistExportBtn = document.getElementById("gistExportBtn");
   const gistImportBtn = document.getElementById("gistImportBtn");
+  const webdavUrl = document.getElementById("webdavUrl");
+  const webdavUser = document.getElementById("webdavUser");
+  const webdavPassword = document.getElementById("webdavPassword");
+  const webdavPath = document.getElementById("webdavPath");
+  const webdavStatus = document.getElementById("webdavStatus");
+  const webdavSaveBtn = document.getElementById("webdavSaveBtn");
+  const webdavSyncBtn = document.getElementById("webdavSyncBtn");
+  const webdavRestoreBtn = document.getElementById("webdavRestoreBtn");
+  const webdavClearBtn = document.getElementById("webdavClearBtn");
   const updateStatus = document.getElementById("updateStatus");
 
   const SITE_ORIGIN = "https://sb6657.cn/*";
+  const WEBDAV_DEFAULT_URL = "https://dav.jianguoyun.com/dav/";
+  const WEBDAV_DEFAULT_PATH = "6657star/star-backup.json";
 
   let entries = [];
   let query = "";
@@ -64,6 +75,7 @@
   let tagFilterValue = "";
   let sortValue = "new";
   let settings = null;
+  let webdavConfig = null;
   const FILTER_KEY = "filters";
   const VIEW_KEY = "welcomeViewed";
   let toastTimer = null;
@@ -718,6 +730,7 @@
     } catch (error) { /* 忽略 */ }
     memeCacheSize.textContent = "缓存大小：约 " + (bytes / 1024).toFixed(0) + " KB（梗 " + (info ? info.count : 0) + " 条）";
     await refreshGistUI();
+    await refreshWebdavUI();
     renderUpdateInfo();
     const stats = await store.stats();
     dataStats.textContent = "条目 " + stats.entries + " 条 · 梗命中 " + stats.memes + " 条 · 站点 " + stats.sites +
@@ -736,6 +749,46 @@
   }
 
   function gistError(result) {
+    return (result && result.error) || "未知错误";
+  }
+
+  function webdavOriginPattern(rawUrl) {
+    try {
+      const parsed = new URL(String(rawUrl || "").trim() || WEBDAV_DEFAULT_URL);
+      if (parsed.protocol !== "https:") return "";
+      return parsed.origin + "/*";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  // 只保留非敏感的展示信息，密码不进入页面状态。
+  async function refreshWebdavUI() {
+    const data = await browser.storage.local.get("webdav");
+    const saved = (data && data.webdav) || {};
+    webdavConfig = {
+      url: String(saved.url || WEBDAV_DEFAULT_URL),
+      username: String(saved.username || ""),
+      path: String(saved.path || WEBDAV_DEFAULT_PATH),
+      hasPassword: Boolean(saved.password)
+    };
+    webdavUrl.value = webdavConfig.url;
+    webdavUser.value = webdavConfig.username;
+    webdavPassword.value = "";
+    webdavPassword.placeholder = webdavConfig.hasPassword ? "已保存（留空则不修改）" : "第三方应用密码";
+    webdavPath.value = webdavConfig.path;
+    webdavStatus.textContent = "状态：" +
+      (webdavConfig.username ? "已保存账号" : "未保存账号") +
+      (webdavConfig.hasPassword ? " · 已保存应用密码" : " · 未保存应用密码") +
+      " · " + (saved.url ? "已保存服务器地址" : "使用默认服务器");
+  }
+
+  function webdavResultText(result) {
+    return "新增 " + (result.added || 0) + " 条，更新 " + (result.updated || 0) +
+      " 条，补全 " + (result.filled || 0) + " 条，共 " + (result.total || 0) + " 条";
+  }
+
+  function webdavError(result) {
     return (result && result.error) || "未知错误";
   }
 
@@ -841,6 +894,140 @@
       showToast("已从 Gist 恢复 " + result.added + " 条");
     } catch (error) {
       gistStatus.textContent = "状态：恢复失败";
+    }
+  });
+
+  webdavSaveBtn.addEventListener("click", async function () {
+    const rawUrl = webdavUrl.value.trim() || WEBDAV_DEFAULT_URL;
+    const pattern = webdavOriginPattern(rawUrl);
+    if (!pattern) {
+      webdavStatus.textContent = "状态：服务器地址必须是有效的 HTTPS 网址";
+      return;
+    }
+    webdavStatus.textContent = "状态：等待授权…";
+    let granted = false;
+    try {
+      granted = await browser.permissions.request({ origins: [pattern] });
+    } catch (error) {
+      granted = false;
+    }
+    if (!granted) {
+      webdavStatus.textContent = "状态：未授予 " + new URL(rawUrl).origin + " 的访问权限，未保存、未发起请求";
+      showToast("未授予 WebDAV 权限");
+      return;
+    }
+    webdavStatus.textContent = "状态：保存中…";
+    try {
+      const patch = {
+        url: rawUrl,
+        username: webdavUser.value.trim(),
+        path: webdavPath.value.trim() || WEBDAV_DEFAULT_PATH
+      };
+      if (webdavPassword.value !== "") patch.password = webdavPassword.value;
+      const result = await browser.runtime.sendMessage(Object.assign({ type: "webdavSaveCredentials" }, patch));
+      if (!result || result.ok === false) {
+        webdavStatus.textContent = "状态：" + webdavError(result);
+        return;
+      }
+      webdavPassword.value = "";
+      await refreshWebdavUI();
+      webdavStatus.textContent = "状态：已保存 WebDAV 配置（凭据仅存本机）";
+      showToast("已保存 WebDAV 配置");
+    } catch (error) {
+      webdavStatus.textContent = "状态：保存失败";
+    }
+  });
+
+  webdavSyncBtn.addEventListener("click", async function () {
+    if (!webdavConfig || !webdavConfig.username || !webdavConfig.hasPassword) {
+      webdavStatus.textContent = "状态：请先保存 WebDAV 账号和应用密码";
+      return;
+    }
+    const pattern = webdavOriginPattern(webdavConfig.url);
+    if (!pattern) {
+      webdavStatus.textContent = "状态：已保存的服务器地址不是有效的 HTTPS 网址";
+      return;
+    }
+    webdavStatus.textContent = "状态：等待授权…";
+    let granted = false;
+    try {
+      granted = await browser.permissions.request({ origins: [pattern] });
+    } catch (error) {
+      granted = false;
+    }
+    if (!granted) {
+      webdavStatus.textContent = "状态：未授予 " + new URL(webdavConfig.url).origin + " 的访问权限，未发起任何同步请求";
+      return;
+    }
+    webdavStatus.textContent = "状态：读取远端、合并并上传中…";
+    try {
+      const result = await browser.runtime.sendMessage({ type: "webdavSync" });
+      if (!result || result.ok === false) {
+        webdavStatus.textContent = "状态：" + webdavError(result);
+        return;
+      }
+      await reload();
+      await refreshWebdavUI();
+      webdavStatus.textContent = "状态：同步完成（" + webdavResultText(result) + "）" +
+        (result.retried ? "，冲突后已重新合并重试" : "");
+      showToast("WebDAV 同步完成：新增 " + (result.added || 0) + " 条");
+    } catch (error) {
+      webdavStatus.textContent = "状态：同步失败";
+    }
+  });
+
+  webdavRestoreBtn.addEventListener("click", async function () {
+    if (!webdavConfig || !webdavConfig.username || !webdavConfig.hasPassword) {
+      webdavStatus.textContent = "状态：请先保存 WebDAV 账号和应用密码";
+      return;
+    }
+    const pattern = webdavOriginPattern(webdavConfig.url);
+    if (!pattern) {
+      webdavStatus.textContent = "状态：已保存的服务器地址不是有效的 HTTPS 网址";
+      return;
+    }
+    webdavStatus.textContent = "状态：等待授权…";
+    let granted = false;
+    try {
+      granted = await browser.permissions.request({ origins: [pattern] });
+    } catch (error) {
+      granted = false;
+    }
+    if (!granted) {
+      webdavStatus.textContent = "状态：未授予 " + new URL(webdavConfig.url).origin + " 的访问权限，未发起任何恢复请求";
+      return;
+    }
+    webdavStatus.textContent = "状态：读取远端并合并中…";
+    try {
+      const result = await browser.runtime.sendMessage({ type: "webdavRestore" });
+      if (!result || result.ok === false) {
+        webdavStatus.textContent = "状态：" + webdavError(result);
+        return;
+      }
+      await reload();
+      await refreshWebdavUI();
+      webdavStatus.textContent = result.missing
+        ? "状态：远端还没有备份文件，本地未改变"
+        : "状态：恢复完成（" + webdavResultText(result) + "）";
+      showToast(result.missing ? "远端还没有备份文件" : "已从 WebDAV 合并恢复 " + (result.added || 0) + " 条");
+    } catch (error) {
+      webdavStatus.textContent = "状态：恢复失败";
+    }
+  });
+
+  webdavClearBtn.addEventListener("click", async function () {
+    webdavStatus.textContent = "状态：清除中…";
+    try {
+      const result = await browser.runtime.sendMessage({ type: "webdavClearCredentials" });
+      if (!result || result.ok === false) {
+        webdavStatus.textContent = "状态：" + webdavError(result);
+        return;
+      }
+      await refreshWebdavUI();
+      webdavStatus.textContent = "状态：已清除 WebDAV 账号与应用密码";
+      showToast("已清除 WebDAV 凭据");
+    } catch (error) {
+      webdavStatus.textContent = "状态：清除失败";
     }
   });
 

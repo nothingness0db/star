@@ -17,7 +17,7 @@
 - `lib/store.js`：浏览器存储读写与导入导出（传统脚本，通过 `globalThis.SentenceStore` 暴露）
 - `lib/memes.js`：梗库下载、编码解码、缓存与匹配（通过 `globalThis.MemeLib` 暴露）
 - `content/sb6657.js`：6657 站内星标（仅在用户授权后注入）
-- `library.html` / `library.css` / `library.js`：句子库页面与设置（含「检查更新」）
+- `library.html` / `library.css` / `library.js`：句子库页面与设置（含 Gist / WebDAV 备份）
 
 代码风格：UTF-8、LF、2 空格缩进（见 `.editorconfig`）。没有模块系统，不要用 `import` / `export`。
 改完后在 `about:debugging` 里点「重新载入」。
@@ -28,6 +28,7 @@
 
 ```sh
 npm i -g web-ext
+npm test            # node --test scripts/test-merge.test.mjs
 npm run lint        # web-ext lint --source-dir .
 npm run check       # node --check 所有 JS
 npm run build       # web-ext build --source-dir . --overwrite-dest
@@ -43,7 +44,7 @@ npm run build       # web-ext build --source-dir . --overwrite-dest
 ## 提 PR
 
 1. fork 仓库，从 `main` 开一个分支。
-2. 本地跑 `npm run lint` 和 `npm run check`，确认没有 error。
+2. 本地跑 `npm test`、`npm run lint` 和 `npm run check`，确认没有 error。
 3. 提交时说明改了什么、为什么改；如果改变行为，更新 README 和 CHANGELOG 的 `Unreleased` 段。
 4. 开 PR，填 PR 模板，等 CI 通过。review 通过后由维护者合并。
 
